@@ -73,6 +73,26 @@ def cross_consistency(docs, field="kwota"):
                         if len(uniq) > 1 else []}
 
 
+# ── 2b) intra-document consistency: do the numbers inside a doc add up? ─────────
+def invoice_consistency(lines, stated_brutto, vat_rate="23"):
+    """Verify the document makes SENSE, not just that it's formatted: line items must
+    sum to the stated gross, and (if netto given) netto*(1+vat) must equal brutto.
+    Catches a tampered/typo'd total an LLM tends to accept at face value."""
+    computed = sum((money(l.get("cena_brutto", 0)) * int(l.get("ilosc", 1)) for l in lines),
+                   Decimal("0.00"))
+    stated = money(stated_brutto)
+    lines_ok = computed == stated
+    rate = Decimal(str(vat_rate)) / 100
+    vat_ok = True
+    for l in lines:
+        if "cena_netto" in l:
+            expected = (money(l["cena_netto"]) * (1 + rate)).quantize(Decimal("0.01"))
+            vat_ok = vat_ok and expected == money(l.get("cena_brutto", 0))
+    return {"consistent": lines_ok and vat_ok, "computed_sum": str(computed),
+            "stated": str(stated), "lines_sum_ok": lines_ok, "vat_ok": vat_ok,
+            "delta": str(stated - computed)}
+
+
 # ── 3) context-dependent rules: refund eligibility by plan/days/reason ─────────
 _REFUND_WINDOW = {"PRO": 30, "BASIC": 14, "PrePaid": 0}   # rules depend on the plan
 
@@ -146,6 +166,18 @@ def hard_registry() -> Registry:
         adapter="python",
         config={"keywords": "spojnosc spójność porownaj porównaj dokumenty zamowienie faktura przelew kwota zgodne",
                 "fn": lambda docs, field="kwota": cross_consistency(docs, field)}))
+    reg.add(Capability(
+        uri="audit://faktura/query/consistency", effect="query",
+        input={"type": "object", "required": ["lines", "stated_brutto"]},
+        output={"type": "object", "required": ["consistent"]},
+        examples=({"input": {"lines": [{"nazwa": "CyberMysz", "ilosc": 3, "cena_brutto": "555,00"}],
+                             "stated_brutto": "1 665,00 zł"},
+                   "output": {"consistent": True, "computed_sum": "1665.00",
+                              "stated": "1665.00", "lines_sum_ok": True, "delta": "0.00"}},),
+        adapter="python",
+        config={"keywords": "faktura pozycje sumuja suma brutto vat wewnetrzna arytmetyka poprawna",
+                "fn": lambda lines, stated_brutto, vat_rate="23":
+                invoice_consistency(lines, stated_brutto, vat_rate)}))
     reg.add(Capability(
         uri="rules://zwrot/query/eligible", effect="query",
         input={"type": "object", "required": ["plan", "days_since_purchase", "used_actions"]},

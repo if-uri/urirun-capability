@@ -46,5 +46,7 @@ def test_ocr_settles_a_dispute_between_two_systems():
     assert r["ocr_order"] is True and r["ocr_bank"] is False
     # deterministic verdict: the bank is the erroneous system
     assert r["verdict"]["correct_system"] == "zamowienie" and r["verdict"]["wrong_system"] == "bank"
+    # the invoice is also internally consistent: lines sum to gross, VAT 23% checks out
+    assert r["intra"]["consistent"] and r["intra"]["computed_sum"] == r["intra"]["stated"]
     # evidence captured
     assert r["shot"] and Path(r["shot"]).exists()

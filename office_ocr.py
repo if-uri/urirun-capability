@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 
 from capability import Capability, Registry, dispatch
-from hard_tasks import money, reconcile
+from hard_tasks import money, reconcile, invoice_consistency
 
 NODE = "http://127.0.0.1:28765"
 DESKTOP = "pc1-desktop-1"
@@ -27,6 +27,8 @@ SHOTS = Path(__file__).resolve().parents[1] / "pc1" / "reports" / "screenshots"
 ORDER = {"nr": "FV-2026-07-1", "kwota_brutto": "1 665,00 zł"}
 BANK = {"ref": "FV-2026-07-1", "suma": "1655.00"}
 INVOICE_AMOUNT = "1 665,00 zł"     # what the printed invoice actually shows
+# the invoice's own line items — used to verify it is internally consistent (#6)
+LINES = [{"nazwa": "CyberMysz", "ilosc": 3, "cena_netto": "451,22", "cena_brutto": "555,00"}]
 
 INVOICE_HTML = f"""<!doctype html><meta charset=utf-8><body style="font:28px/1.6 Arial;padding:40px">
 <h1 style="color:#5b2ea6">Faktura VAT {ORDER['nr']}</h1>
@@ -81,6 +83,9 @@ def run_invoice_audit(node: str = NODE) -> dict:
     rec = reconcile([ORDER], [BANK], {"key": ["nr", "ref"], "amount": ["kwota_brutto", "suma"]})
     disc = rec["discrepancies"][0] if rec["discrepancies"] else None
 
+    # 1b) the invoice is internally consistent (lines sum to gross, VAT 23% checks out)
+    intra = invoice_consistency(LINES, INVOICE_AMOUNT)
+
     # 2) open the source invoice on the desktop and OCR it to settle the dispute
     subprocess.run(["docker", "exec", "-i", DESKTOP, "bash", "-c",
                     "cat > /tmp/faktura.html"], input=INVOICE_HTML.encode(), check=True)
@@ -113,10 +118,11 @@ def run_invoice_audit(node: str = NODE) -> dict:
     emit("metric://hard-tasks/ocr/query/summary",
          systems_disagree=bool(disc), discrepancy=disc,
          ocr_shows_order=doc_shows_order, ocr_shows_bank=doc_shows_bank,
-         verdict=verdict, deterministic=True, needs_llm=False,
-         shot=str(shot) if shot else None)
+         verdict=verdict, intra_consistent=intra["consistent"],
+         intra_computed=intra["computed_sum"], intra_stated=intra["stated"],
+         deterministic=True, needs_llm=False, shot=str(shot) if shot else None)
     return {"discrepancy": disc, "ocr_order": doc_shows_order, "ocr_bank": doc_shows_bank,
-            "verdict": verdict, "shot": str(shot) if shot else None}
+            "verdict": verdict, "intra": intra, "shot": str(shot) if shot else None}
 
 
 if __name__ == "__main__":
@@ -125,4 +131,7 @@ if __name__ == "__main__":
     print(f"OCR faktury: pokazuje 1665={r['ocr_order']} / 1655={r['ocr_bank']}")
     print(f"werdykt: faktura={r['verdict']['invoice']}, poprawny system="
           f"{r['verdict']['correct_system']}, błędny={r['verdict']['wrong_system']}")
+    i = r["intra"]
+    print(f"spójność wewnątrz faktury: {i['consistent']} "
+          f"(pozycje={i['computed_sum']}, brutto={i['stated']}, VAT ok={i['vat_ok']})")
     print("zrzut:", r["shot"])

@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from capability import dispatch, check_examples  # noqa: E402
 from hard_tasks import (hard_registry, money, reconcile, cross_consistency,  # noqa: E402
-                        refund_eligible, root_cause)
+                        invoice_consistency, refund_eligible, root_cause)
 
 
 # ── money normalisation across systems (the reconciliation nightmare) ──────────
@@ -58,6 +58,27 @@ def test_cross_consistency_flags_the_odd_document_out():
     assert not r["consistent"] and r["outliers"] == ["faktura"]
 
 
+# ── 2b) intra-document consistency (do the numbers add up? verify SENSE) ───────
+def test_invoice_lines_sum_to_the_stated_total():
+    r = invoice_consistency([{"nazwa": "CyberMysz", "ilosc": 3, "cena_brutto": "555,00"}],
+                            "1 665,00 zł")
+    assert r["consistent"] and r["lines_sum_ok"] and r["computed_sum"] == "1665.00"
+
+
+def test_invoice_catches_a_tampered_total_an_llm_accepts():
+    # lines add up to 1665 but the total says 1650 — a planted 15 zł discrepancy
+    r = invoice_consistency([{"nazwa": "CyberMysz", "ilosc": 3, "cena_brutto": "555,00"}],
+                            "1 650,00 zł")
+    assert not r["consistent"] and r["lines_sum_ok"] is False and r["delta"] == "-15.00"
+
+
+def test_invoice_catches_wrong_vat():
+    # netto 451,22 * 1.23 = 555.00; here brutto is mis-stated as 500,00
+    r = invoice_consistency([{"cena_netto": "451,22", "cena_brutto": "500,00", "ilosc": 1}],
+                            "500,00")
+    assert not r["consistent"] and r["vat_ok"] is False
+
+
 # ── 3) context-dependent refund rules (auditable decision) ─────────────────────
 def test_refund_rules_depend_on_plan_context():
     assert refund_eligible("BASIC", 5, 10)["eligible"] is True
@@ -88,7 +109,7 @@ def test_root_cause_reports_what_it_cannot_explain():
 # ── every capability's golden example still conforms (regression guard) ────────
 def test_all_hard_capabilities_conform_and_dispatch():
     reg = hard_registry()
-    assert len(reg._caps) == 4
+    assert len(reg._caps) == 5
     for cap in reg._caps.values():
         res = check_examples(reg, cap)
         assert res["passed"] == res["total"], f"{cap.uri}: {res}"
