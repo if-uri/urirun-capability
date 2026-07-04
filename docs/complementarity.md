@@ -65,6 +65,16 @@ Najlepszy workflow łączy oba, zamiast wybierać:
 To odpowiada na „które zadania są najlepsze do workflow AI + człowiek/deterministyczne":
 otwartość LLM na wejściu, twarda gwarancja na wyjściu.
 
+### Mierzalna granica skali (`llm_scale_sweep.py`)
+
+Ustaliliśmy gdzie dokładnie LLM się załamuje: stała liczba rozbieżności (3), rosnąca lista
+faktur. `gemma4:e4b` był poprawny i spójny przy **N = 10, 25, 50** (3/3), a **przy N = 75
+dryfnął** (odpowiedzi `?, ?, 3` — niespójne, bez czystej liczby). Zdolność deterministyczna:
+poprawna i spójna przy każdym N. Wniosek praktyczny: **poniżej ~50 pozycji LLM wystarcza,
+powyżej — konieczna deterministyczna zdolność lub hybryda z weryfikacją**. Granica jest
+zmierzona, nie zgadnięta, i przesuwa się z modelem — dlatego warto ją monitorować
+(`metric://llm/scale`).
+
 ## Gdzie LLM jest najsilniejszy (i tu zostaje)
 
 LLM świetnie radzi sobie z **otwartą interpretacją celu**: „*otwórz sklep i zrób
