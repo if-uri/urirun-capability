@@ -28,17 +28,25 @@ def office_registry() -> Registry:
         adapter="python",
         config={"keywords": "odpowiedz odpowiedź odpisz mail poczta szef szefowi wiadomosc",
                 "fn": lambda to, body: (MAILBOX.append({"to": to, "body": body}), {"sent": True})[1]}))
+    # reversible: adding a task can be undone by removing it (inverse metadata in the result)
     reg.add(Capability(
-        uri="task://biuro/lista/command/add", effect="command",
+        uri="task://biuro/lista/command/add", effect="command", reversible=True,
+        inverse="task://biuro/lista/command/remove",
         input={"type": "object", "required": ["title"], "properties": {"title": {"type": "string"}}},
-        output={"type": "object", "properties": {"added": {"type": "boolean"}}},
+        output={"type": "object", "properties": {"taskId": {"type": "string"}}},
         examples=({"input": {"title": "Zamowic 3x CyberMysz (polecenie szefa)"},
-                   "output": {"added": True}},),
+                   "output": {"taskId": "T-1"}},),
         adapter="python",
         config={"keywords": "zadanie zadania dopisz lista todo notatka przypomnienie",
-                "fn": lambda title: (TASKS.append({"title": title}), {"added": True})[1]}))
+                "fn": _task_add}))
     reg.add(Capability(
-        uri="shop://cybermysz/zamowienie/command/place", effect="command",
+        uri="task://biuro/lista/command/remove", effect="command",
+        input={"type": "object", "required": ["taskId"], "properties": {"taskId": {"type": "string"}}},
+        adapter="python", config={"internal": True, "fn": _task_remove}))
+    # reversible: placing an order can be undone by cancelling it
+    reg.add(Capability(
+        uri="shop://cybermysz/zamowienie/command/place", effect="command", reversible=True,
+        inverse="shop://cybermysz/zamowienie/command/cancel",
         input={"type": "object", "required": ["pozycje"],
                "properties": {"pozycje": {"type": "string"}, "ilosc": {"type": "integer"}}},
         output={"type": "object", "properties": {"orderId": {"type": "string"}}},
@@ -46,9 +54,39 @@ def office_registry() -> Registry:
                    "output": {"orderId": "ORD-1"}},),
         adapter="python",
         config={"keywords": "zamow zamów zamowienie zamówienie kup kupic cybermysz sklep mysz sprzet",
-                "fn": lambda pozycje, ilosc=1: (ORDERS.append({"pozycje": pozycje, "ilosc": ilosc}),
-                                                {"orderId": f"ORD-{len(ORDERS)}"})[1]}))
+                "fn": _order_place}))
+    reg.add(Capability(
+        uri="shop://cybermysz/zamowienie/command/cancel", effect="command",
+        input={"type": "object", "required": ["orderId"], "properties": {"orderId": {"type": "string"}}},
+        adapter="python", config={"internal": True, "fn": _order_cancel}))
     return reg
+
+
+def _task_add(title):
+    tid = f"T-{len(TASKS) + 1}"
+    TASKS.append({"taskId": tid, "title": title})
+    # the result carries its own inverse so the saga can compensate deterministically
+    return {"taskId": tid, "inverse": {"uri": "task://biuro/lista/command/remove",
+                                       "args": {"taskId": tid}}}
+
+
+def _task_remove(taskId):
+    TASKS[:] = [t for t in TASKS if t.get("taskId") != taskId]
+    return {"removed": True, "taskId": taskId}
+
+
+def _order_place(pozycje, ilosc=1):
+    oid = f"ORD-{len(ORDERS) + 1}"
+    ORDERS.append({"orderId": oid, "pozycje": pozycje, "ilosc": ilosc, "status": "placed"})
+    return {"orderId": oid, "inverse": {"uri": "shop://cybermysz/zamowienie/command/cancel",
+                                        "args": {"orderId": oid}}}
+
+
+def _order_cancel(orderId):
+    for o in ORDERS:
+        if o.get("orderId") == orderId:
+            o["status"] = "cancelled"
+    return {"cancelled": True, "orderId": orderId}
 
 
 def run_office_goal(goal: str) -> dict:

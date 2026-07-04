@@ -7,6 +7,10 @@ can compose AND undo flows deterministically — no LLM, no hand-written rollbac
   run_flow(registry, steps)   -> run an ordered flow, threading outputs
   plan_undo(registry, ran)    -> from a reversible command that ran, build its
                                  inverse step (wiring the output into the inverse input)
+  undo_flow(registry, results)-> compensate a completed flow: every reversible step,
+                                 newest first, via its inverse (a saga rollback)
+  run_saga(registry, steps)   -> run a flow that AUTO-compensates on failure —
+                                 if a step fails, already-done reversible steps are undone
 """
 from __future__ import annotations
 
@@ -35,6 +39,49 @@ def run_flow(registry: Registry, steps: list[dict], *, events: Events | None = N
     ms = round((time.time() - t0) * 1000, 2)
     events.emit("flow://plan/command/done", actor=actor, steps=len(steps), ms=ms)
     return {"ok": True, "results": ctx, "ms": ms, "events": events.log}
+
+
+def undo_flow(registry: Registry, results: list[dict], *, events: Events | None = None,
+              actor: str = "planner") -> dict:
+    """Compensate a completed flow: walk results newest-first, and for every
+    reversible step run its inverse. Non-reversible steps (e.g. a sent mail) are
+    reported as un-compensable — the honest limit of any rollback."""
+    events = events or Events()
+    events.emit("saga://tx/command/rollback-start", actor=actor, steps=len(results))
+    undone, skipped = [], []
+    for res in reversed(results):
+        u = plan_undo(registry, res)
+        if not u:
+            skipped.append(res.get("uri"))
+            continue
+        out = dispatch(registry, u["uri"], u["payload"], events=events, actor=actor)
+        (undone if out.get("ok") else skipped).append(u["uri"])
+    events.emit("saga://tx/command/rollback-done", actor=actor,
+                undone=len(undone), skipped=len(skipped))
+    return {"undone": undone, "irreversible": skipped, "events": events.log}
+
+
+def run_saga(registry: Registry, steps: list[dict], *, events: Events | None = None,
+             actor: str = "planner") -> dict:
+    """Run a flow as a saga: if any step fails, automatically compensate every
+    already-completed reversible step (newest first). All-or-nothing for the
+    reversible part — no half-applied transaction left behind."""
+    events = events or Events()
+    ctx: list[dict] = []
+    events.emit("saga://tx/command/start", actor=actor, steps=len(steps))
+    for i, step in enumerate(steps):
+        payload = dict(step.get("payload", {}))
+        for field, path in (step.get("wire") or {}).items():
+            payload[field] = _dig(ctx, path)
+        out = dispatch(registry, step["uri"], payload, events=events, actor=actor)
+        if not out.get("ok"):
+            events.emit("saga://tx/command/compensate", actor=actor, failedAt=i, stepUri=step["uri"])
+            comp = undo_flow(registry, ctx, events=events, actor=actor)
+            return {"ok": False, "at": i, "results": ctx, "compensated": comp["undone"],
+                    "irreversible": comp["irreversible"], "events": events.log}
+        ctx.append(out)
+    events.emit("saga://tx/command/commit", actor=actor, steps=len(steps))
+    return {"ok": True, "results": ctx, "events": events.log}
 
 
 def _dig(ctx: list[dict], path: str):

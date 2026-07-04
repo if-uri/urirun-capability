@@ -5,3 +5,4 @@ bench-result.json
 contract-metrics.json
 aggregate-metrics.json
 examples-bench.json
+saga-metrics.json
