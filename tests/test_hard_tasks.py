@@ -11,7 +11,8 @@ from capability import dispatch, check_examples  # noqa: E402
 from hard_tasks import (hard_registry, money, reconcile, cross_consistency,  # noqa: E402
                         invoice_consistency, refund_eligible, root_cause,
                         field_completeness, instruction_conflicts,
-                        extractive_notes, triage_ticket)
+                        extractive_notes, triage_ticket, report_quality,
+                        prioritize, normalize_record, merge_sources)
 
 
 # ── money normalisation across systems (the reconciliation nightmare) ──────────
@@ -184,10 +185,52 @@ def test_triage_escalates_on_age():
     assert r["priority"] == "wysoki"                      # open > 7 days
 
 
+# ── 9) report quality score (#7) ───────────────────────────────────────────────
+def test_report_quality_scores_completeness_and_specifics():
+    good = report_quality("Opis: awaria serwera. Kroki: 1,2,3. Data 2026-07-01.",
+                          ["opis", "kroki", "data"])
+    assert good["score"] == 100 and good["verdict"] == "kompletne"
+    bad = report_quality("cos nie dziala, pomozcie", ["opis", "kroki", "data"])
+    assert bad["missing"] and bad["verdict"] == "do uzupełnienia"
+
+
+# ── 10) dynamic prioritisation (#11) ───────────────────────────────────────────
+def test_prioritize_is_deterministic_and_reorders_on_signal_change():
+    items = [{"id": "A", "severity": "normalny", "amount": "100", "age_days": 1},
+             {"id": "B", "severity": "krytyczny", "amount": "0", "age_days": 0},
+             {"id": "C", "severity": "normalny", "amount": "5000", "age_days": 9}]
+    r = prioritize(items)
+    assert r["order"][0] == "B"                      # critical first
+    assert prioritize(items)["order"] == r["order"]  # deterministic (same input, same order)
+    # a signal change (A becomes critical) re-derives the order deterministically
+    items[0]["severity"] = "krytyczny"
+    r2 = prioritize(items)
+    assert r2["order"].index("A") < r["order"].index("A")   # A climbed
+    assert r2["order"] == prioritize(items)["order"]        # still deterministic
+
+
+# ── 11) format normalisation (#16) ─────────────────────────────────────────────
+def test_normalize_canonicalises_messy_formats():
+    r = normalize_record({"kwota": "1 665,00 zł", "telefon": "600-100-200",
+                          "data": "01.07.2026", "nip": "123-456-78-90"})
+    assert r["kwota"] == "1665.00" and r["telefon"] == "+48600100200"
+    assert r["data"] == "2026-07-01" and r["nip"] == "1234567890"
+
+
+# ── 12) merge records from many sources (#20) ──────────────────────────────────
+def test_merge_dedupes_by_key_and_reports_conflicts():
+    r = merge_sources([{"nr": "FV-1", "kwota": "1665", "klient": "Biuro"},
+                       {"nr": "FV-1", "email": "biuro@firma.pl"},
+                       {"nr": "FV-2", "kwota": "555"}])
+    assert r["count"] == 2                            # FV-1 deduped, FV-2 separate
+    fv1 = next(m for m in r["merged"] if m["nr"] == "FV-1")
+    assert fv1["email"] == "biuro@firma.pl" and fv1["kwota"] == "1665"   # fields merged
+
+
 # ── every capability's golden example still conforms (regression guard) ────────
 def test_all_hard_capabilities_conform_and_dispatch():
     reg = hard_registry()
-    assert len(reg._caps) == 9
+    assert len(reg._caps) == 13
     for cap in reg._caps.values():
         res = check_examples(reg, cap)
         assert res["passed"] == res["total"], f"{cap.uri}: {res}"

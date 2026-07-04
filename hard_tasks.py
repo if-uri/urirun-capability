@@ -232,6 +232,91 @@ def triage_ticket(text, amount=0, days_open=0):
             "matched_on": [k for _n, kws in _SEVERITY for k in kws if k in low][:3]}
 
 
+# ── 9) quality score of a report/complaint (#7) ────────────────────────────────
+def report_quality(text, required_sections):
+    """Score a report by which required sections it actually contains and whether it
+    carries specifics (numbers/dates) — an objective gate, not a subjective vibe."""
+    low = str(text).lower()
+    present = [s for s in required_sections if s.lower() in low]
+    missing = [s for s in required_sections if s.lower() not in low]
+    has_specifics = bool(_NUM.search(str(text)))
+    score = round(100 * len(present) / max(1, len(required_sections)) - (0 if has_specifics else 15))
+    return {"score": max(0, score), "present": present, "missing": missing,
+            "has_specifics": has_specifics,
+            "verdict": "kompletne" if not missing and has_specifics else "do uzupełnienia"}
+
+
+# ── 10) dynamic prioritisation as signals change (#11) ─────────────────────────
+_SEV_W = {"krytyczny": 100, "wysoki": 50, "normalny": 10}
+
+
+def prioritize(items):
+    """Deterministic priority score from changing signals (severity, amount, age) — the
+    SAME situation always orders the same way, and it re-derives cleanly when signals
+    change (unlike an LLM that reshuffles arbitrarily)."""
+    def score(it):
+        return (_SEV_W.get(it.get("severity", "normalny"), 10)
+                + min(50, int(float(money(it.get("amount", 0)) / 100)))
+                + min(40, int(it.get("age_days", 0)) * 4))
+    ranked = sorted(items, key=score, reverse=True)
+    return {"order": [it.get("id") for it in ranked],
+            "scored": [{"id": it.get("id"), "score": score(it)} for it in ranked]}
+
+
+# ── 11) normalise messy formats to a canonical form (#16) ──────────────────────
+def normalize_record(rec):
+    """One canonical shape from many messy inputs: dates -> ISO, amounts -> decimal,
+    phone -> +48#########, NIP -> digits. What people do by hand across documents."""
+    out = {}
+    for k, v in (rec or {}).items():
+        s = str(v).strip()
+        if k in ("kwota", "brutto", "netto", "amount"):
+            out[k] = str(money(s))
+        elif k in ("telefon", "phone", "tel"):
+            digits = re.sub(r"\D", "", s)[-9:]
+            out[k] = "+48" + digits if len(digits) == 9 else s
+        elif k in ("nip", "regon"):
+            out[k] = re.sub(r"\D", "", s)
+        elif k in ("data", "date", "termin"):
+            m = re.search(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})", s) or \
+                re.search(r"(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})", s)
+            if m:
+                g = m.groups()
+                y, mo, d = (g if len(g[0]) == 4 else (g[2], g[1], g[0]))
+                out[k] = f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+            else:
+                out[k] = s
+        else:
+            out[k] = s
+    return out
+
+
+# ── 12) merge records from many sources, resolve conflicts (#20) ───────────────
+def merge_sources(records, key="nr"):
+    """Dedupe by key across sources; when two sources disagree on a field, keep the
+    value from the most COMPLETE record and report the conflict — the manual data
+    clean-up nobody enjoys, made deterministic and auditable."""
+    by_key: dict = {}
+    conflicts = []
+    for r in records:
+        k = r.get(key)
+        if k is None:
+            continue
+        cur = by_key.get(k)
+        if cur is None:
+            by_key[k] = dict(r); continue
+        for f, v in r.items():
+            if f in cur and cur[f] != v and v not in (None, ""):
+                if len(str(v)) > len(str(cur[f])) or cur[f] in (None, ""):
+                    conflicts.append({"key": k, "field": f, "kept": v, "dropped": cur[f]})
+                    cur[f] = v
+                elif cur[f] not in (None, ""):
+                    conflicts.append({"key": k, "field": f, "kept": cur[f], "dropped": v})
+            else:
+                cur.setdefault(f, v)
+    return {"merged": list(by_key.values()), "count": len(by_key), "conflicts": conflicts}
+
+
 # ── registry: each as a typed, content-addressed capability with examples ──────
 def hard_registry() -> Registry:
     reg = Registry()
@@ -338,4 +423,44 @@ def hard_registry() -> Registry:
         adapter="python",
         config={"keywords": "zgloszenie reklamacja triage priorytet klasyfikuj zgloszenia sprawa ocen",
                 "fn": lambda text, amount=0, days_open=0: triage_ticket(text, amount, days_open)}))
+    reg.add(Capability(
+        uri="quality://raport/query/score", effect="query",
+        input={"type": "object", "required": ["text", "required_sections"]},
+        output={"type": "object", "required": ["score"]},
+        examples=({"input": {"text": "Opis: awaria. Kroki: 1,2,3. Data 2026-07-01.",
+                             "required_sections": ["opis", "kroki", "data"]},
+                   "output": {"score": 100, "verdict": "kompletne"}},),
+        adapter="python",
+        config={"keywords": "jakosc ocena raport ocen kompletnosc zgloszenia braki punktacja",
+                "fn": lambda text, required_sections: report_quality(text, required_sections)}))
+    reg.add(Capability(
+        uri="priorytet://kolejka/query/order", effect="query",
+        input={"type": "object", "required": ["items"]},
+        output={"type": "object", "required": ["order"]},
+        examples=({"input": {"items": [{"id": "A", "severity": "normalny"},
+                                       {"id": "B", "severity": "krytyczny"}]},
+                   "output": {"order": ["B", "A"]}},),
+        adapter="python",
+        config={"keywords": "priorytet priorytety kolejnosc uszereguj ustal wazne pilne kolejka",
+                "fn": lambda items: prioritize(items)}))
+    reg.add(Capability(
+        uri="format://rekord/query/normalize", effect="query",
+        input={"type": "object", "required": ["rec"]},
+        output={"type": "object", "required": ["kwota"]},
+        examples=({"input": {"rec": {"kwota": "1 665,00 zł", "telefon": "600-100-200",
+                                     "data": "01.07.2026"}},
+                   "output": {"kwota": "1665.00", "telefon": "+48600100200", "data": "2026-07-01"}},),
+        adapter="python",
+        config={"keywords": "format normalizuj popraw ujednolic formaty daty kwoty telefon standard",
+                "fn": lambda rec: normalize_record(rec)}))
+    reg.add(Capability(
+        uri="scal://dane/query/merge", effect="query",
+        input={"type": "object", "required": ["records"]},
+        output={"type": "object", "required": ["merged"]},
+        examples=({"input": {"records": [{"nr": "FV-1", "kwota": "1665"},
+                                         {"nr": "FV-1", "email": "biuro@firma.pl"}]},
+                   "output": {"count": 1}},),
+        adapter="python",
+        config={"keywords": "scal scalanie polacz merge dane zrodla dedup uzgodnij rekordy popraw",
+                "fn": lambda records, key="nr": merge_sources(records, key)}))
     return reg
