@@ -10,7 +10,7 @@ from http.server import HTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from console import ask, make_handler, EXAMPLES  # noqa: E402
+from console import ask, make_handler, console_registry, EXAMPLES  # noqa: E402
 from hard_tasks import hard_registry  # noqa: E402
 
 ROUTES = {
@@ -26,9 +26,10 @@ ROUTES = {
 
 
 def test_every_example_goal_routes_and_none_are_dead():
+    from twin_nl import plan_flow_nl   # routing only — don't execute (twin goals would launch apps)
+    reg = console_registry()           # includes the live-twin actions the chips offer
     for g in EXAMPLES:
-        r = ask(g)
-        assert r["routed"], f"goal did not route: {g!r}"
+        assert plan_flow_nl(reg, g), f"goal did not route: {g!r}"
 
 
 def test_polish_goals_route_to_the_intended_capability():

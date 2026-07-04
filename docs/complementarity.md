@@ -34,6 +34,23 @@ Dokładnie w tych samych miejscach — bo typowana zdolność daje:
 5. **Konformans z `examples`** — złote pary wejście→wyjście łapią regresję zachowania
    (patrz niżej), czego sam schemat nie daje.
 
+## Test empiryczny (uczciwie: LLM nie jest głupi)
+
+Uruchomiliśmy prawdziwy lokalny LLM (`gemma4:e4b` przez Ollama) na tych samych
+zadaniach (`llm_compare.py`). Wynik jest bardziej niuansowy niż „LLM tego nie umie":
+
+- **Na małych, jasno sformułowanych zadaniach LLM bywa poprawny i spójny** — rekonsyliacja
+  15 faktur, konflikt zakopany w 12 instrukcjach, 8 pól do sprawdzenia: 3/3 trafień.
+  Teza w naiwnej formie („LLM nie policzy") jest **za mocna** i byłoby nieuczciwie ją głosić.
+- **Różnica ujawnia się przy SKALI i GWARANCJACH.** Przy 50 fakturach model odpowiadał
+  raz `3`, raz `30` — **niespójny dryf**, gdy zdolność zawsze zwraca `3`. A niezależnie od
+  trafienia: LLM ~21 000 ms/zadanie vs zdolność ~110 µs (**~188 000×**), bez proweniencji
+  (nie mówi KTÓRA faktura), bez dowodu, bez powtarzalności.
+
+**Wniosek (właściwa komplementarność):** to nie „LLM kontra reguły". LLM jest dobry do
+otwartej interpretacji i małej skali; deterministyczna zdolność wygrywa tam, gdzie liczy
+się **skala, spójność, czas, proweniencja i dowód** — i to jest mierzalne, nie deklaratywne.
+
 ## Gdzie LLM jest najsilniejszy (i tu zostaje)
 
 LLM świetnie radzi sobie z **otwartą interpretacją celu**: „*otwórz sklep i zrób

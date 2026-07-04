@@ -10,11 +10,13 @@ no LLM in the loop. GET / serves the page; POST /ask {goal} returns the verdict 
 from __future__ import annotations
 
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from capability import dispatch, Registry
+from capability import dispatch, Registry, Capability
 from hard_tasks import hard_registry
 from twin_nl import plan_flow_nl
+from flow import run_flow
 
 # canned office scenarios so a routed capability has something real to chew on
 SCENARIOS = {
@@ -48,7 +50,31 @@ SCENARIOS = {
 EXAMPLES = ["uzgodnij fakturę z przelewem", "sprawdź spójność zamówienia",
             "czy faktura się sumuje", "czy należy się zwrot", "znajdź przyczynę awarii",
             "czego brakuje w danych", "wykryj sprzeczne instrukcje",
-            "zrób notatki z rozmowy", "sklasyfikuj zgłoszenie"]
+            "zrób notatki z rozmowy", "sklasyfikuj zgłoszenie",
+            "otwórz sklep na pc1 i zrób zrzut"]
+
+NODE = os.environ.get("PC1_NODE", "http://127.0.0.1:28765")
+
+
+def console_registry(node: str = NODE) -> Registry:
+    """The deterministic audits PLUS a couple of live-twin actions, so one console
+    covers both office analysis and hands-on control of pc1."""
+    reg = hard_registry()
+    reg.add(Capability(
+        uri="app://pc1/desktop/command/launch", effect="command",
+        input={"type": "object", "required": ["app"], "properties": {"app": {"type": "string"}}},
+        examples=({"input": {"app": "chromium"}, "output": {"ok": True}},),
+        adapter="http-node",
+        config={"node": node, "remoteUri": "app://host/desktop/command/launch",
+                "keywords": "otworz sklep uruchom przegladarke chromium pc1 pulpit"}))
+    reg.add(Capability(
+        uri="kvm://pc1/screen/query/capture", effect="query",
+        input={"type": "object", "properties": {"base64": {"type": "boolean"}}},
+        examples=({"input": {"base64": False}, "output": {"ok": True}},),
+        adapter="http-node",
+        config={"node": node, "remoteUri": "kvm://host/screen/query/capture",
+                "keywords": "zrzut ekran ekranu screenshot pc1"}))
+    return reg
 
 
 def ask(goal: str, reg: Registry | None = None) -> dict:
@@ -57,6 +83,13 @@ def ask(goal: str, reg: Registry | None = None) -> dict:
     if not steps:
         return {"goal": goal, "routed": None, "verdict": None,
                 "note": "brak pasującej zdolności — spróbuj innego sformułowania"}
+    # a multi-step twin goal (launch + capture) runs as a flow; a single audit runs once
+    twin = [s for s in steps if s["uri"].startswith(("app://pc1", "kvm://pc1"))]
+    if len(twin) > 1:
+        res = run_flow(reg, twin)
+        return {"goal": goal, "routed": [s["uri"] for s in twin], "ok": res.get("ok"),
+                "verdict": {"kroki": [s["uri"] for s in twin], "wykonano": res.get("ok")},
+                "deterministic": True, "needs_llm": False}
     uri = steps[0]["uri"]
     payload = SCENARIOS.get(uri, steps[0].get("payload", {}))
     out = dispatch(reg, uri, payload)
@@ -131,7 +164,7 @@ def make_handler(reg: Registry):
 
 
 def serve(port: int = 8790):
-    reg = hard_registry()
+    reg = console_registry()
     print(f"Konsola operatora: http://127.0.0.1:{port}")
     HTTPServer(("127.0.0.1", port), make_handler(reg)).serve_forever()
 
