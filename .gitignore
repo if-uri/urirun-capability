@@ -4,3 +4,4 @@ __pycache__/
 bench-result.json
 contract-metrics.json
 aggregate-metrics.json
+examples-bench.json
