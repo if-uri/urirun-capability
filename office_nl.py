@@ -35,7 +35,9 @@ def office_registry() -> Registry:
         input={"type": "object", "required": ["title"], "properties": {"title": {"type": "string"}}},
         output={"type": "object", "properties": {"taskId": {"type": "string"}}},
         examples=({"input": {"title": "Zamowic 3x CyberMysz (polecenie szefa)"},
-                   "output": {"taskId": "T-bca1a2"}},),
+                   "output": {"taskId": "T-bca1a2",
+                              "inverse": {"uri": "task://biuro/lista/command/remove",
+                                          "args": {"taskId": "T-bca1a2"}}}},),
         adapter="python",
         config={"keywords": "zadanie zadania dopisz lista todo notatka przypomnienie",
                 "fn": _task_add}))
@@ -51,7 +53,9 @@ def office_registry() -> Registry:
                "properties": {"pozycje": {"type": "string"}, "ilosc": {"type": "integer"}}},
         output={"type": "object", "properties": {"orderId": {"type": "string"}}},
         examples=({"input": {"pozycje": "3x CyberMysz", "ilosc": 3},
-                   "output": {"orderId": "ORD-408059"}},),
+                   "output": {"orderId": "ORD-408059",
+                              "inverse": {"uri": "shop://cybermysz/zamowienie/command/cancel",
+                                          "args": {"orderId": "ORD-408059"}}}},),
         adapter="python",
         config={"keywords": "zamow zamów zamowienie zamówienie kup kupic cybermysz sklep mysz sprzet",
                 "fn": _order_place}))

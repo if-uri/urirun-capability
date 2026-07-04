@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from capability import check_examples, output_matches  # noqa: E402
-from audit_examples import registries  # noqa: E402
+from audit_examples import registries, reversibility_audit  # noqa: E402
 
 
 def test_output_matches_is_partial_and_catches_wrong_values():
@@ -33,6 +33,20 @@ def test_every_example_across_every_registry_conforms():
             if res["passed"] != res["total"]:
                 weak.append(f"{reg_name} :: {cap.uri} ({res['passed']}/{res['total']})")
     assert not weak, "examples that do not conform:\n  " + "\n  ".join(weak)
+
+
+def test_every_reversible_capability_has_a_verifiable_rollback():
+    # invariant: a capability that declares reversible + examples must carry an inverse
+    # whose args satisfy the inverse route's input — a broken rollback fails in CI
+    broken = [f"{r['reg']} :: {r['uri']} — {r['why']}"
+              for r in reversibility_audit() if not r["ok"]]
+    assert not broken, "reversible capabilities with an unverifiable rollback:\n  " + "\n  ".join(broken)
+
+
+def test_the_audit_actually_covers_reversible_capabilities():
+    rev = reversibility_audit()
+    assert len(rev) >= 6                              # office(2) + filepair(2) + windowpair(2) + fs
+    assert any("office" in r["reg"] for r in rev) and any("fs" in r["reg"] for r in rev)
 
 
 def test_capabilities_that_carry_examples_actually_have_them():

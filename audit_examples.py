@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from capability import check_examples, Registry
+from capability import check_examples, check_reversibility, Registry
 from contracts_adopt import adopt_contracts
 from kvstore import load_kvstore
 from hard_tasks import hard_registry
@@ -30,6 +30,27 @@ def registries() -> dict[str, Registry]:
         if cj.exists():
             regs[f"adopt:{name}(stub)"] = adopt_contracts(cj, scheme)
     return regs
+
+
+def reversibility_audit() -> list[dict]:
+    """Every reversible capability (with examples) must have a rollback whose args
+    satisfy the inverse route — checked across all registries, plus the fs PoC."""
+    import tempfile
+    regs = dict(registries())
+    try:
+        from poc_connector_fs import fs_connector
+        regs["fs-poc"] = fs_connector(Path(tempfile.mkdtemp()))
+    except Exception:
+        pass
+    rows = []
+    for reg_name, reg in regs.items():
+        for cap in reg._caps.values():
+            if cap.reversible and cap.examples:
+                r = check_reversibility(reg, cap)
+                rows.append({"reg": reg_name, "uri": cap.uri, "ok": r["ok"],
+                             "checked": r.get("checked", 0),
+                             "why": (r.get("failures") or [{}])[0].get("why") if not r["ok"] else ""})
+    return rows
 
 
 def audit() -> dict:
@@ -65,6 +86,14 @@ def main() -> int:
             print(f"    - {r['uri']}  ({r['passed']}/{r['total']})")
     else:
         print("  Wszystkie examples konformują na tej samej zasadzie.")
+
+    print("\n== Audyt odwracalności: inverse.args ⊨ INPUT trasy odwrotnej\n")
+    rev = reversibility_audit()
+    broken = [r for r in rev if not r["ok"]]
+    for r in rev:
+        print(f"    {'OK ' if r['ok'] else '!! '} {r['reg']:18} {r['uri']:46} "
+              f"{'' if r['ok'] else r['why']}")
+    print(f"\n  {'wszystkie odwracalne zdolności mają weryfikowalny rollback'if not broken else f'{len(broken)} bez weryfikowalnego rollbacku'}.")
     return 0
 
 

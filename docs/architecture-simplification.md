@@ -128,6 +128,12 @@ odwracalność z cross-route walidacją, izolację i portowalność**. Model to 
 (przetestowane), a migracja jednego connectora była **właściwym sposobem znalezienia tych
 niuansów** — zanim uderzyłyby w produkcji.
 
+Niuans #1 rozlał się dalej: audyt `check_reversibility` na **wszystkich** rejestrach wykrył,
+że zdolności `office` (task↔remove, order↔cancel) deklarowały odwracalność, ale ich examples
+nie niosły `inverse.args` — rollback był niesprawdzalny. Uzupełnione; teraz **niezmiennik CI**
+(`test_every_reversible_capability_has_a_verifiable_rollback`) pilnuje, że każda odwracalna
+zdolność z examples ma weryfikowalny rollback — 8/8 przechodzi (office, filepair, windowpair, fs).
+
 ## Spięcie z żywym meshem (`test_mesh_node.py`)
 
 Descriptor-connector `hash` uruchomiony jako **żywy node HTTP** (`serve.py`) i sterowany
