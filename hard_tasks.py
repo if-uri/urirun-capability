@@ -269,7 +269,7 @@ def hard_registry() -> Registry:
                    "output": {"consistent": True, "computed_sum": "1665.00",
                               "stated": "1665.00", "lines_sum_ok": True, "delta": "0.00"}},),
         adapter="python",
-        config={"keywords": "faktura pozycje sumuja suma brutto vat wewnetrzna arytmetyka poprawna",
+        config={"keywords": "faktura pozycje sumuja sumuje sumowanie suma brutto vat wewnetrzna arytmetyka poprawna",
                 "fn": lambda lines, stated_brutto, vat_rate="23":
                 invoice_consistency(lines, stated_brutto, vat_rate)}))
     reg.add(Capability(

@@ -53,26 +53,42 @@ def _keywords(cap: Capability) -> str:
     # NOT the scheme/authority (the node name appears in every uri)
     path = cap.uri.split("://", 1)[-1].split("/")
     obj_action = " ".join(path[1:]) if len(path) > 1 else ""
-    return (obj_action + " " + cap.config.get("keywords", "")).lower()
+    return _norm(obj_action + " " + cap.config.get("keywords", ""))
+
+
+_ACCENTS = str.maketrans("ąćęłńóśźżäöü", "acelnoszzaou")
+_STOP = {"czy", "jak", "sie", "dla", "the", "and", "por", "kto", "gdzie", "moze"}
+
+
+def _norm(s: str) -> str:
+    """Lowercase + strip Polish diacritics so 'zgłoszenie' matches keyword 'zgloszenie'
+    and routing is robust to how the operator types."""
+    return s.lower().translate(_ACCENTS)
 
 
 def plan_flow_nl(registry: Registry, goal: str) -> list[dict]:
     """Match goal tokens to capabilities and order them by where their trigger word
     first appears in the goal. Payloads come from each capability's example (seed)."""
-    g = goal.lower()
+    g = _norm(goal)
     tokens = re.findall(r"\w+", g)
     picked = []
     for cap in registry._caps.values():
         if cap.config.get("internal"):
             continue
-        kw = _keywords(cap)
-        hits = [t for t in tokens if len(t) > 2 and t in kw]
+        kw_words = set(_keywords(cap).split())
+        # match WHOLE keyword words (not substrings of longer words — 'czy' must not
+        # hit 'przyczyna'); allow a stem only for 5+ char keywords fully inside a token
+        # (so 'sklasyfikuj' hits 'klasyfikuj'). Common stopwords never match.
+        hits = [t for t in tokens if len(t) > 2 and t not in _STOP and (
+            t in kw_words or any(len(w) >= 5 and w in t for w in kw_words))]
         if not hits:
             continue
         pos = min(g.index(h) for h in hits)          # first mention -> order
         payload = dict(cap.examples[0]["input"]) if cap.examples else {}
-        picked.append((pos, {"uri": cap.uri, "payload": payload}))
-    return [step for _, step in sorted(picked, key=lambda x: x[0])]
+        # rank: more keyword hits = more specific match (breaks 'faktura' ties in
+        # favour of the capability the goal describes best), then by first mention
+        picked.append((-len(set(hits)), pos, {"uri": cap.uri, "payload": payload}))
+    return [step for _, _, step in sorted(picked, key=lambda x: (x[0], x[1]))]
 
 
 def run_goal(goal: str, *, node: str = NODE, undo: bool = True) -> dict:
