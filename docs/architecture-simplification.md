@@ -108,6 +108,35 @@ Dla porównania oryginał obsługuje **1 trasę** w 96 liniach Go + ręczny `man
 oznacza, że każdy connector jest tak trywialny (kvm ma nieredukowalną logikę CDP/OCR) — ale
 **obudowa kontraktu** wokół każdej logiki redukuje się do zera.
 
+## Niuanse znalezione w migracji pilotażowej (`fs`, `poc_connector_fs.py`)
+
+Przeniesienie realnego connectora `fs` (5 tras, para odwracalna) ujawniło trzy niuanse,
+których naiwny deskryptor NIE oddaje — i każdy trzeba było domodelować:
+
+1. **Cross-route walidacja rollbacku.** Realna brama fs sprawdza, że `inverse.args` KAŻDEGO
+   przykładu spełniają INPUT schema trasy odwrotnej (delete musi dostarczyć `bytes_b64`,
+   którego wymaga write-b64). Mój model tego nie robił — dodałem `check_reversibility`
+   w rdzeniu; test dowodzi, że **łapie zepsuty rollback deklaratywnie**, nie w produkcji.
+2. **Izolacja handlera.** `@FS.handler(..., isolated=True)` to realna właściwość wykonania
+   (subprocess) — musi być zapisana w deskryptorze (`config.isolated`), nie zgubiona.
+3. **Wyciek handlera przy discovery.** Serwowanie `/capabilities` przez `asdict(cap)`
+   dołączało funkcję-handler (nieserializowalną i niebezpieczną) — poprawione na portowalny
+   `contract()`. Deskryptor do dyskoverowania to **kontrakt bez `config`**.
+
+Wniosek: uproszczenie jest realne, ale nie darmowe — deskryptor musi nieść **efekt,
+odwracalność z cross-route walidacją, izolację i portowalność**. Model to teraz robi
+(przetestowane), a migracja jednego connectora była **właściwym sposobem znalezienia tych
+niuansów** — zanim uderzyłyby w produkcji.
+
+## Spięcie z żywym meshem (`test_mesh_node.py`)
+
+Descriptor-connector `hash` uruchomiony jako **żywy node HTTP** (`serve.py`) i sterowany
+z osobnego klienta Capability przez adapter `http-node` (protocol="capability" → POST
+/dispatch). Klient **nigdy nie importuje connectora** — tylko woła jego URI po sieci; sha256
+liczy się na node, a `/capabilities` i `/openapi.json` dają discovery. To domyka ścieżkę:
+deskryptory → działający, dyskoverowalny, język-neutralny node w meshu, zero kodu serwera
+per connector.
+
 ## Odpowiedź wprost
 
 **Tak — da się znacząco uprościć**, i to jest zmierzone, nie deklaratywne: kontrakt z 2–3

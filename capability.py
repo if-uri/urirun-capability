@@ -338,3 +338,30 @@ def check_examples(registry: Registry, cap: Capability, events: Events | None = 
                         "expected": expected, "got": got.get("result") or got.get("error")})
     return {"uri": cap.uri, "passed": sum(r["ok"] for r in results),
             "total": len(results), "results": results}
+
+
+def check_reversibility(registry: Registry, cap: Capability) -> dict:
+    """Cross-route reversibility check (the nuance a real connector gate has): for a
+    reversible capability, each example's output must carry an `inverse` whose `args`
+    SATISFY THE INPUT SCHEMA of the inverse route. A broken rollback (inverse.args that
+    the inverse route would reject) fails here declaratively, not in production."""
+    if not cap.reversible:
+        return {"uri": cap.uri, "reversible": False, "checked": 0, "ok": True}
+    inv = registry.get(cap.inverse) if cap.inverse else None
+    if inv is None:
+        return {"uri": cap.uri, "reversible": True, "ok": False,
+                "error": f"inverse route not registered: {cap.inverse}"}
+    checked, failures = 0, []
+    for ex in cap.examples:
+        out = ex.get("output") or {}
+        meta = out.get("inverse") if isinstance(out, dict) else None
+        args = (meta or {}).get("args", {}) if isinstance(meta, dict) else None
+        if args is None:
+            failures.append({"input": ex.get("input"), "why": "example output has no inverse.args"})
+            continue
+        checked += 1
+        err = _validate(inv.input, args)                     # must satisfy the INVERSE input schema
+        if err:
+            failures.append({"input": ex.get("input"), "why": f"inverse.args reject: {err}"})
+    return {"uri": cap.uri, "reversible": True, "inverse": cap.inverse,
+            "checked": checked, "ok": not failures, "failures": failures}

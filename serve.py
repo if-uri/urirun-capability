@@ -70,8 +70,10 @@ def make_handler(reg: Registry):
             if self.path == "/openapi.json":
                 return self._json(200, to_openapi(reg))
             if self.path == "/capabilities":
+                # the PORTABLE descriptor (contract), never the config — config carries
+                # the handler fn, which is neither serialisable nor safe to expose
                 return self._json(200, {"capabilities": [
-                    {**asdict(c), "id": c.id()} for c in reg._caps.values()]})
+                    {**c.contract(), "id": c.id()} for c in reg._caps.values()]})
             return self._json(404, {"ok": False})
 
         def do_POST(self):
