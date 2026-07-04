@@ -23,6 +23,15 @@ Ten sam kontrakt żyje w:
 
 Muszą być ręcznie zsynchronizowane. Rozjazd = cichy błąd (manifest mówi jedno, kod robi drugie).
 
+**Zmierzone empirycznie** (`drift_audit.py`, `metric://architecture/drift`): z 32 connectorów
+z manifestem i handlerami **1 ma realny rozjazd** (`twin`: 25 handlerów w kodzie, 0 tras w
+manifeście). Pozostałe 31 trzymają się zgodnie — ale **wyłącznie ręczną dyscypliną**. Co
+istotniejsze: sam ten audyt wymagał trzech iteracji normalizacji tras (goły dekorator +
+prefiks sub-routera `@PAGE.handler` vs pełne URI w manifeście, różna głębokość authority) —
+**reprezentacja jest tak niespójna, że wykrycie rozjazdu jest trudne**. Generowanie manifestu
+z jednego deskryptora usuwa całą tę klasę problemu: rozjazd staje się strukturalnie niemożliwy,
+a forma trasy — jedna.
+
 ### 2. Boilerplate na paczkę, nie na kontrakt
 Każdy `urirun-contract-*` wozi 36-liniową bramę (`toolkit`) + gate + I/O — **~422 linie na
 2 kontrakty** (zmierzone). To kod publikowany, wersjonowany i utrzymywany per paczka, choć
