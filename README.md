@@ -37,7 +37,13 @@ being **more** robust, portable and observable.
 
 **Komplementarność LLM ↔ zdolności** (dlaczego to najsilniejsze tam, gdzie LLM
 najsłabszy) i **jedna zasada `examples`** opisane w
-[`docs/complementarity.md`](docs/complementarity.md).
+[`docs/complementarity.md`](docs/complementarity.md) — z empirią (LLM dryfuje przy
+skali N≈75), wzorcem hybrydowym i sweepem granicy.
+
+**Uproszczenie architektury** (38 connectorów, kontrakt w 2–3 miejscach → jeden
+deskryptor, reszta generowana) w
+[`docs/architecture-simplification.md`](docs/architecture-simplification.md);
+`projections.py` demonstruje generowanie manifestu i OpenAPI z jednego deskryptora.
 
 ## Migracja, nie przepisywanie
 
