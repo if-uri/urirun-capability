@@ -35,7 +35,7 @@ def office_registry() -> Registry:
         input={"type": "object", "required": ["title"], "properties": {"title": {"type": "string"}}},
         output={"type": "object", "properties": {"taskId": {"type": "string"}}},
         examples=({"input": {"title": "Zamowic 3x CyberMysz (polecenie szefa)"},
-                   "output": {"taskId": "T-1"}},),
+                   "output": {"taskId": "T-bca1a2"}},),
         adapter="python",
         config={"keywords": "zadanie zadania dopisz lista todo notatka przypomnienie",
                 "fn": _task_add}))
@@ -51,7 +51,7 @@ def office_registry() -> Registry:
                "properties": {"pozycje": {"type": "string"}, "ilosc": {"type": "integer"}}},
         output={"type": "object", "properties": {"orderId": {"type": "string"}}},
         examples=({"input": {"pozycje": "3x CyberMysz", "ilosc": 3},
-                   "output": {"orderId": "ORD-1"}},),
+                   "output": {"orderId": "ORD-408059"}},),
         adapter="python",
         config={"keywords": "zamow zamów zamowienie zamówienie kup kupic cybermysz sklep mysz sprzet",
                 "fn": _order_place}))
@@ -62,8 +62,17 @@ def office_registry() -> Registry:
     return reg
 
 
+import hashlib
+
+
+def _tid(text: str, prefix: str) -> str:
+    """Content-addressed id: deterministic from the input, not from mutable state —
+    so a golden example pins a stable value AND the op is idempotent-testable."""
+    return f"{prefix}-{hashlib.blake2b(text.encode(), digest_size=3).hexdigest()}"
+
+
 def _task_add(title):
-    tid = f"T-{len(TASKS) + 1}"
+    tid = _tid(title, "T")
     TASKS.append({"taskId": tid, "title": title})
     # the result carries its own inverse so the saga can compensate deterministically
     return {"taskId": tid, "inverse": {"uri": "task://biuro/lista/command/remove",
@@ -76,7 +85,7 @@ def _task_remove(taskId):
 
 
 def _order_place(pozycje, ilosc=1):
-    oid = f"ORD-{len(ORDERS) + 1}"
+    oid = _tid(f"{pozycje}x{ilosc}", "ORD")
     ORDERS.append({"orderId": oid, "pozycje": pozycje, "ilosc": ilosc, "status": "placed"})
     return {"orderId": oid, "inverse": {"uri": "shop://cybermysz/zamowienie/command/cancel",
                                         "args": {"orderId": oid}}}

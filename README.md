@@ -31,6 +31,13 @@ being **more** robust, portable and observable.
 | `test_examples_are_conformance_tests` | `examples` = testy + few-shot + planner |
 | `test_whole_core_is_small` | rdzeń < 350 linii (dziś ~26k) |
 | `tests/test_live_node.py` | **nowy rdzeń steruje żywym node'em pc1** i waliduje jego output |
+| `tests/test_hard_tasks.py` | zadania „anty-LLM" (rekonsyliacja, spójność, reguły, diagnoza) deterministycznie |
+| `tests/test_audit_examples.py` | niezmiennik: **wszystkie** `examples` konformują na jednej zasadzie |
+| `tests/test_saga.py` | transakcja all-or-nothing z kompensacją przez `inverse` |
+
+**Komplementarność LLM ↔ zdolności** (dlaczego to najsilniejsze tam, gdzie LLM
+najsłabszy) i **jedna zasada `examples`** opisane w
+[`docs/complementarity.md`](docs/complementarity.md).
 
 ## Migracja, nie przepisywanie
 

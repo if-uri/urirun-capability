@@ -58,6 +58,19 @@ def mini_to_jsonschema(mini: dict) -> dict:
     return out
 
 
+def _make_stub(examples: tuple):
+    """Input-aware replay: return the output of the example whose input equals the
+    call's kwargs, so a multi-example contract conforms on ALL its examples."""
+    first = examples[0]["output"] if examples else {"ok": True}
+
+    def stub(**kw):
+        for ex in examples:
+            if ex.get("input", {}) == kw:
+                return dict(ex["output"]) if isinstance(ex["output"], dict) else ex["output"]
+        return dict(first) if isinstance(first, dict) else first
+    return stub
+
+
 def adopt_contracts(contracts_json: Path, scheme: str, handlers: dict | None = None) -> Registry:
     doc = json.loads(Path(contracts_json).read_text())
     reg = Registry()
@@ -67,10 +80,10 @@ def adopt_contracts(contracts_json: Path, scheme: str, handlers: dict | None = N
         uri = f"{scheme}://host/{obj}/{effect}/{action}"
         examples = tuple({"input": e.get("payload", {}), "output": e.get("result")}
                          for e in c.get("examples", []))
-        # stub handler: replay the golden example output (so dispatch/conformance runs
-        # without the connector's real code)
-        stub_out = examples[0]["output"] if examples else {"ok": True}
-        fn = (handlers or {}).get(route) or (lambda _stub=stub_out, **_kw: dict(_stub))
+        # stub handler: replay the golden output of the example whose INPUT matches
+        # the call (not always the first) — so conformance verifies EVERY example, not
+        # just one. Falls back to the first example, then to {"ok": True}.
+        fn = (handlers or {}).get(route) or _make_stub(examples)
         reg.add(Capability(
             uri=uri, effect=c["effect"], reversible=bool(c.get("reversible")),
             inverse=(f"{scheme}://host/{obj}/command/{c['inverseRoute'].split('/')[-1]}"

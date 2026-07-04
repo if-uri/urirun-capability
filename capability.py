@@ -309,6 +309,23 @@ def metrics(events: Events) -> dict:
 
 
 # ── conformance: examples ARE the tests (and few-shot, and a planner seed) ─────
+def output_matches(expected, actual) -> bool:
+    """A golden example output is a PARTIAL spec: every field it names must deep-match
+    the actual result, but the handler may return extra runtime fields (a generated
+    id, an `inverse` with a concrete pid, timing) without failing conformance. Wrong
+    VALUES are still caught — only unspecified extra keys are tolerated. This is what
+    lets one golden pair verify behaviour across handlers that legitimately annotate
+    their output at runtime."""
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return False
+        return all(k in actual and output_matches(v, actual[k]) for k, v in expected.items())
+    if isinstance(expected, list):
+        return (isinstance(actual, list) and len(expected) == len(actual)
+                and all(output_matches(e, a) for e, a in zip(expected, actual)))
+    return expected == actual
+
+
 def check_examples(registry: Registry, cap: Capability, events: Events | None = None) -> dict:
     """Run a capability's golden examples through the real adapter."""
     events = events or Events()
@@ -316,7 +333,7 @@ def check_examples(registry: Registry, cap: Capability, events: Events | None = 
     for ex in cap.examples:
         got = dispatch(registry, cap.uri, ex.get("input", {}), events=events)
         expected = ex.get("output")
-        ok = got.get("ok") and (expected is None or got.get("result") == expected)
+        ok = got.get("ok") and (expected is None or output_matches(expected, got.get("result")))
         results.append({"input": ex.get("input"), "ok": bool(ok),
                         "expected": expected, "got": got.get("result") or got.get("error")})
     return {"uri": cap.uri, "passed": sum(r["ok"] for r in results),

@@ -10,7 +10,7 @@ best has examples, returns a ready-to-run plan — deterministically, offline.
 """
 from __future__ import annotations
 
-from capability import Capability, Registry, Events, dispatch, _validate
+from capability import Capability, Registry, Events, dispatch, _validate, output_matches
 
 
 def from_examples(cap: Capability) -> dict | None:
@@ -57,6 +57,6 @@ def plan_and_run(registry: Registry, cap: Capability, *, use_examples: bool) -> 
     out = dispatch(registry, cap.uri, payload or {}, events=ev)
     # conformance: does the produced result match the golden expected output?
     expected = cap.examples[0]["output"] if (use_examples and cap.examples) else None
-    conformant = out.get("ok") and (expected is None or out.get("result") == expected)
+    conformant = out.get("ok") and (expected is None or output_matches(expected, out.get("result")))
     return {"uri": cap.uri, "ok": bool(out.get("ok")), "conformant": bool(conformant),
             "error": out.get("error", {}).get("category") if not out.get("ok") else None}
