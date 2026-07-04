@@ -10,7 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from capability import dispatch, check_examples  # noqa: E402
 from hard_tasks import (hard_registry, money, reconcile, cross_consistency,  # noqa: E402
                         invoice_consistency, refund_eligible, root_cause,
-                        field_completeness, instruction_conflicts)
+                        field_completeness, instruction_conflicts,
+                        extractive_notes, triage_ticket)
 
 
 # ── money normalisation across systems (the reconciliation nightmare) ──────────
@@ -146,10 +147,47 @@ def test_consistent_instructions_pass():
     assert r["consistent"] and r["count"] == 0
 
 
+# ── 7) extractive notes (verbatim, no hallucination) (#13) ─────────────────────
+def test_extractive_notes_keeps_only_decisions_and_numbers_verbatim():
+    r = extractive_notes(["Jan: pogoda ladna dzisiaj",
+                          "Anna: zamawiamy 3 CyberMysz",
+                          "Jan: do zrobienia raport na piatek",
+                          "Anna: milo bylo"])
+    assert r["kept"] == 2 and r["sources"] == [1, 2]     # small-talk dropped
+    # notes are VERBATIM (traceable), not generated
+    assert all(n["text"] in ["Anna: zamawiamy 3 CyberMysz", "Jan: do zrobienia raport na piatek"]
+               for n in r["notes"])
+
+
+def test_extractive_notes_every_note_traces_to_a_source_line():
+    r = extractive_notes(["kwota 1665 zl", "nic ważnego"])
+    assert r["notes"][0]["line"] == 0 and r["notes"][0]["kind"] == "liczba/termin"
+
+
+# ── 8) deterministic ticket triage (consistent + auditable) (#17) ──────────────
+def test_triage_is_consistent_and_auditable():
+    a = triage_ticket("System nie działa, awaria, pilne!")
+    b = triage_ticket("System nie działa, awaria, pilne!")
+    assert a == b                                         # same input -> same output
+    assert a["priority"] == "krytyczny" and a["category"] == "techniczne" and a["sla_hours"] == 4
+    assert a["matched_on"]                                # names what fired
+
+
+def test_triage_escalates_on_money_even_when_wording_is_calm():
+    calm = triage_ticket("Prośba o informację o fakturze", amount="1500,00")
+    assert calm["priority"] == "wysoki"                   # escalated by amount >= 1000
+    assert calm["category"] == "płatność"
+
+
+def test_triage_escalates_on_age():
+    r = triage_ticket("Pytanie ogólne", days_open=10)
+    assert r["priority"] == "wysoki"                      # open > 7 days
+
+
 # ── every capability's golden example still conforms (regression guard) ────────
 def test_all_hard_capabilities_conform_and_dispatch():
     reg = hard_registry()
-    assert len(reg._caps) == 7
+    assert len(reg._caps) == 9
     for cap in reg._caps.values():
         res = check_examples(reg, cap)
         assert res["passed"] == res["total"], f"{cap.uri}: {res}"

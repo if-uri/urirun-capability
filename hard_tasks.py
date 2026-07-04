@@ -182,6 +182,56 @@ def root_cause(symptoms):
             "unexplained": sorted(s - top[1])}
 
 
+# ── 7) extractive notes from a long conversation (#13 — no hallucination) ──────
+_DECISION = ("ustal", "ustalmy", "decyd", "zamawiam", "zamów", "do zrobienia", "trzeba",
+             "termin", "deadline", "zróbmy", "wysyłam", "potwierdzam")
+_NUM = re.compile(r"\d")
+
+
+def extractive_notes(utterances):
+    """Pull the sentences that actually carry decisions / actions / numbers — VERBATIM
+    from the transcript (each note traces to a source line), instead of GENERATING a
+    summary that can invent or drop facts. Small-talk is left out."""
+    notes = []
+    for i, u in enumerate(utterances):
+        text = u if isinstance(u, str) else u.get("text", "")
+        low = text.lower()
+        kind = None
+        if any(k in low for k in _DECISION):
+            kind = "decyzja/akcja"
+        elif _NUM.search(text):
+            kind = "liczba/termin"
+        if kind:
+            notes.append({"line": i, "text": text.strip(), "kind": kind})
+    return {"notes": notes, "kept": len(notes), "of": len(utterances),
+            "sources": [n["line"] for n in notes]}   # provenance: every note has a line
+
+
+# ── 8) triage a messy ticket/complaint by deterministic rules (#17) ────────────
+_SEVERITY = [("krytyczny", ("nie działa", "awaria", "pilne", "krytyczn", "stoi", "błąd krytyczny")),
+             ("wysoki", ("reklamacja", "zwrot", "opóźnien", "uszkodzon", "brak")),
+             ("normalny", ("pytanie", "prośba", "jak ", "informacj"))]
+_CATEGORY = [("płatność", ("płatnoś", "przelew", "faktur", "zwrot", "p24", "karta")),
+             ("dostawa", ("dostaw", "przesyłk", "kurier", "paczk", "opóźnien")),
+             ("techniczne", ("nie działa", "awaria", "błąd", "logow", "instalac"))]
+_SLA = {"krytyczny": 4, "wysoki": 24, "normalny": 72}
+
+
+def triage_ticket(text, amount=0, days_open=0):
+    """Consistent, auditable triage: the SAME messy report always yields the same
+    priority/category/SLA — and names the rule that fired. LLMs drift across similar
+    cases; a rule table doesn't."""
+    low = str(text).lower()
+    severity = next((name for name, kws in _SEVERITY if any(k in low for k in kws)), "normalny")
+    category = next((name for name, kws in _CATEGORY if any(k in low for k in kws)), "inne")
+    # escalate on money or age even if wording is calm
+    if money(amount) >= money("1000") or int(days_open) > 7:
+        if severity == "normalny":
+            severity = "wysoki"
+    return {"priority": severity, "category": category, "sla_hours": _SLA[severity],
+            "matched_on": [k for _n, kws in _SEVERITY for k in kws if k in low][:3]}
+
+
 # ── registry: each as a typed, content-addressed capability with examples ──────
 def hard_registry() -> Registry:
     reg = Registry()
@@ -269,4 +319,23 @@ def hard_registry() -> Registry:
         adapter="python",
         config={"keywords": "instrukcje sprzeczne sprzecznosc konflikt polecenia kroki niespojne wykryj",
                 "fn": lambda directives: instruction_conflicts(directives)}))
+    reg.add(Capability(
+        uri="notes://rozmowa/query/extract", effect="query",
+        input={"type": "object", "required": ["utterances"]},
+        output={"type": "object", "required": ["notes"]},
+        examples=({"input": {"utterances": ["Jan: pogoda ladna", "Anna: zamawiamy 3 CyberMysz",
+                                            "Jan: do zrobienia raport na piatek"]},
+                   "output": {"kept": 2, "of": 3, "sources": [1, 2]}},),
+        adapter="python",
+        config={"keywords": "notatki notatka podsumuj streszczenie rozmowa spotkanie wypunktuj wazne",
+                "fn": lambda utterances: extractive_notes(utterances)}))
+    reg.add(Capability(
+        uri="triage://zgloszenie/query/classify", effect="query",
+        input={"type": "object", "required": ["text"]},
+        output={"type": "object", "required": ["priority", "category"]},
+        examples=({"input": {"text": "System nie działa, awaria, pilne!", "amount": 0, "days_open": 0},
+                   "output": {"priority": "krytyczny", "category": "techniczne", "sla_hours": 4}},),
+        adapter="python",
+        config={"keywords": "zgloszenie reklamacja triage priorytet klasyfikuj zgloszenia sprawa ocen",
+                "fn": lambda text, amount=0, days_open=0: triage_ticket(text, amount, days_open)}))
     return reg

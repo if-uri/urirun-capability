@@ -70,6 +70,17 @@ def main() -> int:
                                     {"require": "zalacznik"}, {"forbid": "zalacznik"}]})["result"]
     print(f"sprzeczne instrukcje: {conf['count']} konflikt(y) → {[c['type'] for c in conf['conflicts']]}")
 
+    # 7) extractive notes from a long conversation (#13) — verbatim, no hallucination
+    notes = dispatch(reg, "notes://rozmowa/query/extract",
+                     {"utterances": ["Jan: pogoda ladna", "Anna: zamawiamy 3 CyberMysz na jutro",
+                                     "Jan: do zrobienia raport na piatek", "Anna: milo bylo"]})["result"]
+    print(f"notatki (ekstraktywne): {notes['kept']}/{notes['of']} linii, źródła {notes['sources']}")
+
+    # 8) triage a messy ticket (#17) — consistent + auditable
+    tri = dispatch(reg, "triage://zgloszenie/query/classify",
+                   {"text": "Płatność nie przeszła, faktura błędna, pilne!", "amount": "1665,00"})["result"]
+    print(f"triage zgłoszenia: {tri['priority']}/{tri['category']} SLA={tri['sla_hours']}h")
+
     # a Polish goal routes to the right hard-task capability, no LLM
     routed = plan_flow_nl(reg, "uzgodnij faktury z przelewami")
     print(f"cel PL 'uzgodnij faktury z przelewami' → {routed[0]['uri'] if routed else '—'}")
@@ -82,10 +93,12 @@ def main() -> int:
          rootcause=diag["root"], rootcause_confidence=diag["confidence"],
          missing_fields=comp["missing"],
          instruction_conflicts=conf["count"],
+         notes_kept=f"{notes['kept']}/{notes['of']}",
+         triage=f"{tri['priority']}/{tri['category']}",
          nl_routed_to=(routed[0]["uri"] if routed else None),
          deterministic=True, verified_by_examples=True, needs_llm=False,
          tasks=["reconcile", "consistency", "refund-rules", "root-cause",
-                "completeness", "instruction-conflicts"])
+                "completeness", "instruction-conflicts", "extractive-notes", "triage"])
     print("\n→ 4 zadania 'anty-LLM' zrobione deterministycznie i zweryfikowane:", "OK" if caught else "BŁĄD")
     return 0 if caught else 1
 
