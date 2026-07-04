@@ -51,6 +51,20 @@ zadaniach (`llm_compare.py`). Wynik jest bardziej niuansowy niż „LLM tego nie
 otwartej interpretacji i małej skali; deterministyczna zdolność wygrywa tam, gdzie liczy
 się **skala, spójność, czas, proweniencja i dowód** — i to jest mierzalne, nie deklaratywne.
 
+### Wzorzec hybrydowy „LLM proponuje, zdolność weryfikuje" (`hybrid.py`)
+
+Najlepszy workflow łączy oba, zamiast wybierać:
+
+- **LLM jako ekstraktor** — czyta luźny tekst („faktura na 1 665,00 zł, ale bank pokazuje
+  1655 zł") i wyciąga strukturę; tego deterministyczny parser słów kluczowych nie zrobi.
+- **Zdolność jako weryfikator z ostatnim słowem** — normalizuje (`money()`), rozstrzyga
+  (`reconcile`) i **ma finalny głos**: gdy LLM dryfnie (powie `30` zamiast `3`),
+  `verify(llm, truth)` zwraca wartość deterministyczną i zapisuje dryf. Niezweryfikowana
+  liczba nigdy nie trafia dalej.
+
+To odpowiada na „które zadania są najlepsze do workflow AI + człowiek/deterministyczne":
+otwartość LLM na wejściu, twarda gwarancja na wyjściu.
+
 ## Gdzie LLM jest najsilniejszy (i tu zostaje)
 
 LLM świetnie radzi sobie z **otwartą interpretacją celu**: „*otwórz sklep i zrób
