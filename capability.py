@@ -224,6 +224,7 @@ def dispatch(registry: Registry, uri: str, payload: dict | None = None, *,
              actor: str = "caller") -> dict:
     events = events or Events()
     payload = payload or {}
+    t0 = time.time()
     events.emit("run://call/command/start", actor=actor, target=uri)
 
     cap = registry.get(uri)
@@ -253,9 +254,11 @@ def dispatch(registry: Registry, uri: str, payload: dict | None = None, *,
     if oerr:
         return _fail(events, uri, actor, "CONTRACT_VIOLATION", f"output: {oerr}")
 
+    ms = round((time.time() - t0) * 1000, 2)
     events.emit("run://call/command/done", actor=actor, target=uri,
-                effect=cap.effect, capId=cap.id(), ok=True)
-    return {"ok": True, "uri": uri, "capId": cap.id(), "result": result, "events": events.log}
+                effect=cap.effect, capId=cap.id(), ok=True, ms=ms)
+    return {"ok": True, "uri": uri, "capId": cap.id(), "result": result,
+            "ms": ms, "events": events.log}
 
 
 def _fail(events: Events, uri: str, actor: str, category: str, message: str) -> dict:
@@ -265,6 +268,35 @@ def _fail(events: Events, uri: str, actor: str, category: str, message: str) -> 
                 message=message, sourceUri=uri)
     return {"ok": False, "uri": uri, "error": {"code": code, "category": category,
             "message": message}, "events": events.log}
+
+
+# ── metrics: validate optimization at several levels ──────────────────────────
+def metrics(events: Events) -> dict:
+    """Aggregate a run into level-1..3 optimization signals.
+
+    L1 (per-step): duration of each dispatch.
+    L2 (per-task): count, wall time, throughput.
+    L3 (quality):  success rate, contract violations / errors prevented.
+    """
+    done = [e for e in events.log if e["uri"] == "run://call/command/done"]
+    errs = events.by_scheme("error")
+    times = [e["payload"].get("ms", 0.0) for e in done]
+    n = len(done) + len(errs)
+    ok = len(done)
+    total_ms = sum(times)
+    caught = [e for e in errs if e["payload"].get("category") == "CONTRACT_VIOLATION"]
+    return {
+        "dispatches": n,
+        "ok": ok,
+        "failed": len(errs),
+        "success_rate": round(ok / n, 3) if n else 0.0,
+        "total_ms": round(total_ms, 2),
+        "avg_ms": round(total_ms / len(times), 2) if times else 0.0,
+        "min_ms": round(min(times), 2) if times else 0.0,
+        "max_ms": round(max(times), 2) if times else 0.0,
+        "throughput_per_s": round(ok / (total_ms / 1000), 2) if total_ms else 0.0,
+        "contract_violations_caught": len(caught),
+    }
 
 
 # ── conformance: examples ARE the tests (and few-shot, and a planner seed) ─────

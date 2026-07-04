@@ -1,0 +1,33 @@
+{
+  "task": "kvm://host/screen/query/capture",
+  "n": 8,
+  "baseline": {
+    "approach": "baseline (urirun host run, CLI/mesh per call)",
+    "dispatches": 8,
+    "ok": 8,
+    "failed": 0,
+    "success_rate": 1.0,
+    "total_ms": 5989.32,
+    "avg_ms": 748.67,
+    "min_ms": 723.77,
+    "max_ms": 785.63,
+    "throughput_per_s": 1.34,
+    "output_validated": false,
+    "contract_violations_caught": 0
+  },
+  "capability": {
+    "dispatches": 8,
+    "ok": 8,
+    "failed": 0,
+    "success_rate": 1.0,
+    "total_ms": 3557.31,
+    "avg_ms": 444.66,
+    "min_ms": 426.28,
+    "max_ms": 473.84,
+    "throughput_per_s": 2.25,
+    "contract_violations_caught": 0,
+    "approach": "capability (shrunk core, http-node, typed+validated)",
+    "output_validated": true
+  },
+  "speedup_per_task": 1.68
+}
