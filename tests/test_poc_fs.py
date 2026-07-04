@@ -61,7 +61,25 @@ def test_isolation_is_recorded_in_the_descriptor():
     assert all(c.config.get("isolated") for c in reg._caps.values())   # not lost in migration
 
 
-def test_generated_manifest_matches_the_real_fs_routes():
+def test_dedup_find_and_move_on_real_files():
+    base = _tmp()
+    reg = fs_connector(base)
+    (base / "a.txt").write_bytes(b"same")
+    (base / "b.txt").write_bytes(b"same")               # duplicate of a
+    (base / "c.txt").write_bytes(b"unique")
+    found = dispatch(reg, "fs://host/duplicates/query/find", {"root": "/"})
+    assert found["ok"] and found["result"]["duplicateGroups"] == 1
+    assert found["result"]["extraFiles"] == 1
+    # dry-run moves nothing on disk but reports the plan
+    dry = dispatch(reg, "fs://host/duplicates/command/move", {"root": "/", "dry_run": True})
+    assert dry["result"]["movedCount"] == 1 and (base / "b.txt").exists()
+    # real move relocates the extra copy
+    dispatch(reg, "fs://host/duplicates/command/move", {"root": "/", "dry_run": False})
+    assert not (base / "b.txt").exists()                # moved into _duplicates
+    assert (base / "a.txt").exists() and (base / "c.txt").exists()
+
+
+def test_generated_manifest_matches_the_real_fs_1to1():
     reg = fs_connector(_tmp())
     man = to_manifest(reg, {"id": "fs"})
     generated = set(man["routes"])
@@ -70,5 +88,5 @@ def test_generated_manifest_matches_the_real_fs_routes():
     if not real_mf:
         return
     real = set(json.loads(real_mf.read_text()).get("routes", []))
-    # every descriptor route exists in the real connector (interop; PoC covers 3 of 5)
-    assert generated <= real, generated - real
+    # full 1:1 migration — the generated manifest covers exactly the real connector's routes
+    assert generated == real, {"only_generated": generated - real, "only_real": real - generated}

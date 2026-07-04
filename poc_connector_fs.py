@@ -54,6 +54,38 @@ def fs_connector(base: Path) -> Registry:
                                                 "bytes_b64": base64.b64encode(data).decode(),
                                                 "overwrite": True}}}
 
+    def _groups(root, mode="sha256", min_size=0):
+        r = base / root.lstrip("/")
+        by_hash: dict[str, list] = {}
+        for f in sorted(r.rglob("*")):
+            if f.is_file() and "_duplicates" not in f.parts and f.stat().st_size >= (min_size or 0):
+                key = hashlib.new(mode, f.read_bytes()).hexdigest()
+                by_hash.setdefault(key, []).append(f)
+        return {k: v for k, v in by_hash.items() if len(v) > 1}
+
+    def _find(root, mode="sha256", extensions=None, min_size=0, threshold=None, max_groups=None):
+        g = _groups(root, mode, min_size)
+        groups = [{"key": k, "count": len(v), "files": ["/" + str(f.relative_to(base)) for f in v]}
+                  for k, v in g.items()]
+        reclaim = sum((len(v) - 1) * v[0].stat().st_size for v in g.values())
+        return {"ok": True, "connector": "fs", "root": root, "mode": mode, "threshold": threshold,
+                "duplicateGroups": len(g), "extraFiles": sum(len(v) - 1 for v in g.values()),
+                "reclaimableBytes": reclaim, "groups": groups}
+
+    def _move(root, mode="sha256", dry_run=False, extensions=None, min_size=0, threshold=None):
+        g = _groups(root, mode, min_size)
+        moved = []
+        for k, files in g.items():
+            for extra in files[1:]:                          # keep the first, move the rest
+                dest = base / root.lstrip("/") / "_duplicates" / k[:2] / extra.name
+                moved.append({"from": "/" + str(extra.relative_to(base)),
+                              "to": "/" + str(dest.relative_to(base)), "key": k})
+                if not dry_run:
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    extra.rename(dest)
+        return {"ok": True, "connector": "fs", "root": root, "mode": mode,
+                "dryRun": bool(dry_run), "movedCount": len(moved), "moved": moved}
+
     reg = Registry()
     reg.add(Capability(
         uri="fs://host/file/query/read-b64", effect="query",
@@ -78,4 +110,18 @@ def fs_connector(base: Path) -> Registry:
                    "output": {"inverse": {"uri": _W, "args": {"path": "/a.txt",
                                           "bytes_b64": "aGVsbG8=", "overwrite": True}}}},),
         adapter="python", config={"fn": _delete, "isolated": True}))
+    reg.add(Capability(
+        uri="fs://host/duplicates/query/find", effect="query",
+        input={"type": "object", "required": ["root"],
+               "properties": {"root": {"type": "string"}, "mode": {"type": "string"},
+                              "extensions": {"type": "array"}, "min_size": {"type": "integer"}}},
+        output={"type": "object", "required": ["duplicateGroups"]},
+        adapter="python", config={"fn": _find, "isolated": True}))
+    reg.add(Capability(
+        uri="fs://host/duplicates/command/move", effect="command",   # command, NOT reversible
+        input={"type": "object", "required": ["root"],
+               "properties": {"root": {"type": "string"}, "mode": {"type": "string"},
+                              "dry_run": {"type": "boolean"}}},
+        output={"type": "object", "required": ["movedCount"]},
+        adapter="python", config={"fn": _move, "isolated": True}))
     return reg
