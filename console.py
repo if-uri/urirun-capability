@@ -17,6 +17,7 @@ from capability import dispatch, Registry, Capability
 from hard_tasks import hard_registry
 from twin_nl import plan_flow_nl
 from flow import run_flow
+from hybrid import extract_and_reconcile
 
 # canned office scenarios so a routed capability has something real to chew on
 SCENARIOS = {
@@ -98,6 +99,21 @@ def ask(goal: str, reg: Registry | None = None) -> dict:
             "deterministic": True, "needs_llm": False}
 
 
+def ask_hybrid(text: str, model: str = "gemma4:e4b") -> dict:
+    """Free-text mode: the LLM extracts the amounts (its strength), then the reconcile
+    capability decides with proof (its strength). Shows both, so the operator sees what
+    the LLM proposed vs what the capability confirmed."""
+    try:
+        r = extract_and_reconcile(text, model)
+    except Exception as exc:  # noqa: BLE001 - Ollama may be down; degrade honestly
+        return {"text": text, "llm_proposed": None,
+                "note": f"LLM niedostępny ({type(exc).__name__}) — tryb wolnego tekstu wymaga Ollama"}
+    return {"text": text, "llm_proposed": r["extracted"],
+            "capability_confirmed": {"zamowienie": r["order_norm"], "bank": r["bank_norm"],
+                                     "werdykt": r["verdict"], "rozbieznosci": r["discrepancies"]},
+            "needs_llm_for": "ekstrakcja", "verified_by": "recon://…/reconcile"}
+
+
 PAGE = """<!doctype html><meta charset=utf-8><title>Konsola operatora — audyty anty-LLM</title>
 <style>
 body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;max-width:820px;margin:0 auto;padding:24px;
@@ -118,6 +134,10 @@ biurowym i pokaże audytowalny werdykt.</p>
 <input id=g placeholder="np. uzgodnij fakturę z przelewem" onkeydown="if(event.key=='Enter')go()">
 <button onclick=go()>Wykonaj</button>
 <div id=ex></div>
+<h3 style="margin-top:26px">Tryb wolnego tekstu (LLM proponuje, zdolność weryfikuje)</h3>
+<input id=t placeholder="np. faktura FV-1 na 1 665,00 zł, ale bank pokazuje 1655 zł"
+ onkeydown="if(event.key=='Enter')hyb()">
+<button onclick=hyb()>Wyciągnij i zweryfikuj</button>
 <div id=out></div>
 <script>
 var EX=__EXAMPLES__;
@@ -131,6 +151,17 @@ function go(){var goal=document.getElementById('g').value;
    else{v+='<p>zdolność: <span class=uri>'+d.routed+'</span></p>';
         v+='<p class=muted>determinacja bez LLM · werdykt audytowalny</p>';
         v+='<pre>'+JSON.stringify(d.verdict,null,2)+'</pre>'}
+   document.getElementById('out').innerHTML=v;
+ })}
+function hyb(){var text=document.getElementById('t').value;
+ document.getElementById('out').innerHTML='<p class=muted>LLM wyciąga dane…</p>';
+ fetch('/hybrid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text})})
+ .then(function(r){return r.json()}).then(function(d){
+   var v='<h3>Wolny tekst</h3>';
+   if(!d.llm_proposed){v+='<p class=muted>'+(d.note||'brak')+'</p>'}
+   else{v+='<p><b>LLM proponował:</b> '+JSON.stringify(d.llm_proposed)+'</p>';
+        v+='<p><b>Zdolność potwierdziła</b> (<span class=uri>'+d.verified_by+'</span>):</p>';
+        v+='<pre>'+JSON.stringify(d.capability_confirmed,null,2)+'</pre>'}
    document.getElementById('out').innerHTML=v;
  })}
 </script>"""
@@ -155,11 +186,14 @@ def make_handler(reg: Registry):
                 self._send(404, json.dumps({"error": "not found"}))
 
         def do_POST(self):
-            if self.path != "/ask":
-                return self._send(404, json.dumps({"error": "not found"}))
             n = int(self.headers.get("Content-Length", 0))
-            goal = json.loads(self.rfile.read(n) or b"{}").get("goal", "")
-            self._send(200, json.dumps(ask(goal, reg), ensure_ascii=False))
+            body = json.loads(self.rfile.read(n) or b"{}")
+            if self.path == "/ask":
+                self._send(200, json.dumps(ask(body.get("goal", ""), reg), ensure_ascii=False))
+            elif self.path == "/hybrid":
+                self._send(200, json.dumps(ask_hybrid(body.get("text", "")), ensure_ascii=False))
+            else:
+                self._send(404, json.dumps({"error": "not found"}))
     return H
 
 

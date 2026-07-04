@@ -3,14 +3,18 @@ returns an auditable verdict — over HTTP, no LLM."""
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 import urllib.request
 from http.server import HTTPServer
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from console import ask, make_handler, console_registry, EXAMPLES  # noqa: E402
+import console  # noqa: E402
+from console import ask, ask_hybrid, make_handler, console_registry, EXAMPLES  # noqa: E402
 from hard_tasks import hard_registry  # noqa: E402
 
 ROUTES = {
@@ -47,6 +51,27 @@ def test_verdict_is_deterministic_and_auditable():
 def test_unmatched_goal_is_reported_not_guessed():
     r = ask("ugotuj obiad")                         # nothing office-like
     assert r["routed"] is None and "brak" in r["note"]
+
+
+def test_hybrid_degrades_honestly_when_ollama_is_down(monkeypatch):
+    # point the hybrid at a dead port -> it must report, not crash
+    monkeypatch.setattr("hybrid.OLLAMA", "http://127.0.0.1:1/api/generate")
+    r = ask_hybrid("faktura na 1665 zł, bank 1655 zł")
+    assert r["llm_proposed"] is None and "Ollama" in r["note"]
+
+
+@pytest.mark.skipif(os.environ.get("URIRUN_LLM_TEST", "") != "1",
+                    reason="set URIRUN_LLM_TEST=1 for the live hybrid extraction")
+def test_hybrid_llm_extracts_and_capability_confirms():
+    try:
+        urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=3)
+    except Exception:
+        pytest.skip("Ollama not running")
+    r = ask_hybrid("faktura FV-1 na 1 665,00 zł, ale bank pokazuje tylko 1655 zł")
+    assert r["llm_proposed"] is not None                       # LLM did the extraction
+    conf = r["capability_confirmed"]
+    assert conf["zamowienie"] == "1665.00" and conf["bank"] == "1655.00"  # capability normalized
+    assert conf["rozbieznosci"]                                # and proved the gap
 
 
 def test_http_ask_endpoint_returns_the_verdict():
