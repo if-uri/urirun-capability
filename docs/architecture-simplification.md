@@ -92,6 +92,22 @@ Konsekwencje, każda zmierzona lub przetestowana w tym repo:
 Krok po kroku, connector po connectorze; każdy krok mierzalny metryką
 `metric://contract/refactor`.
 
+## Dowód end-to-end: connector wyłącznie z deskryptorów (`poc_connector_hash.py`)
+
+Kompletny, działający connector `hash` zbudowany wyłącznie z deskryptorów na wspólnym
+rdzeniu — bez `contracts.py`, bez `manifest.json`, bez bramy:
+
+- **4 działające trasy** (sha256/sha1/md5/blake2b) w **80 liniach** jednego pliku;
+- realne hashowanie, output walidowany kontraktem, `examples` konformują;
+- **manifest i OpenAPI GENEROWANE** z deskryptorów (4 routes, 4 examples, 4 ścieżki) —
+  nigdy pisane ręcznie, więc rozjazd jest strukturalnie niemożliwy;
+- deskryptor produkuje dokładnie realną formę URI (`hash://host/text/query/sha256`) — interop.
+
+Dla porównania oryginał obsługuje **1 trasę** w 96 liniach Go + ręczny `manifest.json` +
+`go.mod` + testy. PoC: 4 trasy, mniej kodu, zero plików kontraktu do utrzymania. To nie
+oznacza, że każdy connector jest tak trywialny (kvm ma nieredukowalną logikę CDP/OCR) — ale
+**obudowa kontraktu** wokół każdej logiki redukuje się do zera.
+
 ## Odpowiedź wprost
 
 **Tak — da się znacząco uprościć**, i to jest zmierzone, nie deklaratywne: kontrakt z 2–3
