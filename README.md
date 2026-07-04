@@ -49,10 +49,30 @@ URIRUN_CAP_LIVE=1 python -m pytest tests/test_live_node.py   # steruj żywym nod
 - [x] Rdzeń + niezmienniki + testy.
 - [x] Adopcja realnego rejestru v2 + wykrywanie dryfu.
 - [x] Sterowanie żywym node'em pc1 przez adapter `http-node`.
-- [ ] Wystawić Capability jako powierzchnię **OpenAPI (query)** / **AsyncAPI+CloudEvents (command)** — dowolny klient steruje node'em.
+- [x] **Powierzchnia HTTP + OpenAPI** (`serve.py`) — klient nie-Python (curl/JS/Go)
+      steruje tą samą zdolnością z tym samym typowanym kontraktem. `/openapi.json`
+      generowany z rejestru → codegen typowanego klienta w dowolnym języku.
+- [x] **Metryki na różnych poziomach** (`bench.py`, `capability.metrics`): to samo
+      zadanie dwiema drogami — **×1.7 szybciej/zadanie** (749→445 ms), przepustowość
+      1.34→2.25 zad./s, plus walidacja outputu, której baseline nie ma. Wynik trafia
+      do raportu (`report/out` odcinek #5) jako `metric://`.
 - [ ] **Negocjacja backendów**: node ogłasza czym spełni kontrakt (zamiast łańcuchów w Pythonie) → node w Rust/Go/JS spełnia ten sam kontrakt.
 - [ ] Planner jako przeszukiwanie typowanej przestrzeni z `examples` (LLM opcjonalny).
 - [ ] Upstream: emisja zdarzeń jako niezmiennik runtime'u urirun.
+
+## Reużywalność w dowolnym techstacku
+
+Deskryptor zdolności to JSON + JSON Schema — z natury przenośny. `serve.py`
+wystawia go po HTTP z auto-generowanym OpenAPI, więc **dowolny stos** (curl,
+JavaScript, Go, klient z codegenu OpenAPI) steruje tymi samymi zdolnościami,
+z tą samą typowaną walidacją i tymi samymi zdarzeniami — niezależnie od języka
+wywołującego.
+
+```bash
+python serve.py &                                   # HTTP + /openapi.json
+curl -sX POST localhost:8850/dispatch -d '{"uri":"demo://local/echo/query/text","payload":{"text":"hi"}}'
+python bench.py 8                                    # zmierz baseline vs Capability
+```
 
 Prototyp — cel: pokazać na małym wycinku, o ile prostszy i odporniejszy jest
 wynik, zanim zdecydować o większej zmianie.
