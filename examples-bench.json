@@ -1,0 +1,21 @@
+{
+  "capabilities": 8,
+  "regression_caught_with_examples": true,
+  "regression_missed_without_examples": true,
+  "with_examples": {
+    "first_try_valid_input": "8/8",
+    "auto_conformance_covered": "8/8",
+    "golden_pairs_pass": 8,
+    "plan_ms": 73.06,
+    "needs_llm": false,
+    "deterministic": true
+  },
+  "without_examples": {
+    "first_try_valid_input": "8/8",
+    "auto_conformance_covered": "0/8",
+    "golden_pairs_pass": 0,
+    "plan_ms": 6.29,
+    "needs_llm_for_semantics": true,
+    "deterministic": false
+  }
+}
