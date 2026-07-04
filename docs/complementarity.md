@@ -95,6 +95,21 @@ wymogiem do wykonania czy weryfikacji. Podział pracy:
 dokładności, powtarzalności i dowodu. Najlepszy system łączy oba, a nie zastępuje
 jednego drugim.
 
+### Warstwa decyzji podczas wykonania = LLM, nie stałe (`llm_agent.py`)
+
+Zasada wdrożeniowa: **wszystko istotne z punktu decyzji w trakcie wykonywania zadania
+pochodzi z LLM, nie z zaszytych stałych** (współrzędnych, URL-i, wartości). Agent działa
+jako pętla **percepcja → decyzja LLM → operacja**:
+
+- operacje są SEMANTYCZNE (`click-text "Zamów"`, nie `click x,y`; kopiuj/wklej przez
+  `ctrl+c`/`ctrl+v`, nie pozycje) — LLM wybiera KAŻDĄ następną operację i jej argument;
+- wartości (co wpisać, co kliknąć) decyduje LLM z celu, nic nie jest hardkodowane;
+- percepcja (OCR-weryfikacja stanu) karmi kolejną decyzję — pętla zamknięta, nie ślepa.
+
+To NIE kłóci się z deterministycznymi zdolnościami — przeciwnie: **LLM decyduje i działa**
+(nawigacja po nieznanym UI), a **zdolność weryfikuje wynik z dowodem** (`recon://`,
+`audit://`). Decyzja = LLM; weryfikacja = deterministyczna. Dokładnie wzorzec hybrydowy.
+
 ## Zasada `examples` — jedna, spójna w całym systemie
 
 `examples` w każdej zdolności pełnią potrójną rolę: **test konformansu**, **dane
