@@ -3,3 +3,4 @@ __pycache__/
 .pytest_cache/
 bench-result.json
 contract-metrics.json
+aggregate-metrics.json

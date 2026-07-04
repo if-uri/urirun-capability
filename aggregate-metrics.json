@@ -1,0 +1,53 @@
+{
+  "packages": 4,
+  "contracts": 8,
+  "old_total_loc": 1693,
+  "new_total_loc": 0,
+  "shared_core_loc": 323,
+  "old_total_files": 170,
+  "new_total_files": 8,
+  "duplicated_gate_loc": 144,
+  "contract_data_bytes": 10127,
+  "per_pkg": [
+    {
+      "pkg": "capture-click",
+      "contracts": 2,
+      "old_loc": 414,
+      "old_files": 26,
+      "gate_loc": 36,
+      "contract_bytes": 2682,
+      "openapi_bytes": 2234,
+      "examples": 3
+    },
+    {
+      "pkg": "filepair",
+      "contracts": 2,
+      "old_loc": 427,
+      "old_files": 26,
+      "gate_loc": 36,
+      "contract_bytes": 2907,
+      "openapi_bytes": 2168,
+      "examples": 2
+    },
+    {
+      "pkg": "kvstore",
+      "contracts": 2,
+      "old_loc": 422,
+      "old_files": 26,
+      "gate_loc": 36,
+      "contract_bytes": 1691,
+      "openapi_bytes": 1682,
+      "examples": 2
+    },
+    {
+      "pkg": "windowpair",
+      "contracts": 2,
+      "old_loc": 430,
+      "old_files": 92,
+      "gate_loc": 36,
+      "contract_bytes": 2847,
+      "openapi_bytes": 2133,
+      "examples": 2
+    }
+  ]
+}

@@ -12,32 +12,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from capability import Capability, Registry
+from capability import Registry
+from contracts_adopt import adopt_contracts
 
 KV: dict[str, str] = {}   # the actual store (what the 422-LOC package wraps)
 
-
-def _mini_to_jsonschema(mini: dict) -> dict:
-    """urirun mini-schema ({'key':'str','n':'?int','x':'const:true'}) -> JSON Schema."""
-    props, required = {}, []
-    _map = {"str": "string", "int": "integer", "float": "number", "bool": "boolean"}
-    for name, spec in (mini or {}).items():
-        optional = spec.startswith("?")
-        s = spec[1:] if optional else spec
-        if s.startswith("const:"):
-            v = s[len("const:"):]
-            v = {"true": True, "false": False}.get(v, v)
-            props[name] = {"const": v}
-        else:
-            props[name] = {"type": _map.get(s, "string")}
-        if not optional:
-            required.append(name)
-    out = {"type": "object", "properties": props}
-    if required:
-        out["required"] = required
-    return out
-
-
+# real handlers for kvstore (proves adopted contracts run genuine logic, not stubs)
 _HANDLERS = {
     "kv/command/set": lambda key, value: (KV.__setitem__(key, value),
                                           {"ok": True, "connector": "kvstore",
@@ -48,21 +28,7 @@ _HANDLERS = {
 
 
 def load_kvstore(contracts_json: Path, scheme: str = "kv") -> Registry:
-    doc = json.loads(contracts_json.read_text())
-    reg = Registry()
-    for route, c in doc["contracts"].items():
-        obj, effect, action = route.split("/")            # e.g. kv/command/set
-        uri = f"{scheme}://host/{obj}/{effect}/{action}"
-        reg.add(Capability(
-            uri=uri, effect=c["effect"], reversible=bool(c.get("reversible")),
-            inverse=c.get("inverseRoute") or "",
-            input=_mini_to_jsonschema(c.get("inp", {})),
-            output=_mini_to_jsonschema(c.get("out", {})),
-            errors=tuple(c.get("errors", ())),
-            examples=tuple({"input": e.get("payload", {}), "output": e.get("result")}
-                           for e in c.get("examples", [])),
-            adapter="python", config={"fn": _HANDLERS[route]}))
-    return reg
+    return adopt_contracts(contracts_json, scheme, handlers=_HANDLERS)
 
 
 if __name__ == "__main__":
