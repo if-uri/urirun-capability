@@ -15,6 +15,7 @@ from pathlib import Path
 
 from capability import Capability, Registry, Events, dispatch
 from twin_nl import plan_flow_nl
+from flow import run_saga, undo_flow
 
 NODE = os.environ.get("PC1_NODE", "http://127.0.0.1:28765")
 SHOP = os.environ.get("SHOP_URL", "http://shop:9850")
@@ -42,6 +43,12 @@ def office_twin_registry(node: str = NODE) -> Registry:
         adapter="http-node",
         config={"node": node, "remoteUri": "kvm://host/screen/query/capture",
                 "keywords": "zrzut ekran ekranu screenshot potwierdzenie zdjecie zdjęcie"}))
+    # inverse target so the saga can compensate the launch (close the browser) on the node
+    reg.add(Capability(
+        uri="kvm://pc1/proc/command/kill", effect="command",
+        input={"type": "object", "required": ["pid"], "properties": {"pid": {"type": "integer"}}},
+        adapter="http-node",
+        config={"node": node, "remoteUri": "kvm://host/proc/command/kill", "internal": True}))
     return reg
 
 
@@ -68,12 +75,37 @@ def run_office_goal_on_twin(goal: str, *, node: str = NODE, shot_name: str = "40
             "shot": str(saved) if saved else None, "events": ev.log}
 
 
+def run_office_saga_on_twin(goal: str, *, node: str = NODE, rollback: bool = True) -> dict:
+    """The office goal as a SAGA on the live twin: the reversible launch (open shop)
+    auto-compensates via the node's concrete inverse (kill the browser pid) — on a
+    mid-flow failure, or on an explicit rollback after a successful run. All real,
+    on pc1, no LLM."""
+    reg = office_twin_registry(node)
+    steps = plan_flow_nl(reg, goal)
+    ev = Events()
+    saga = run_saga(reg, steps, events=ev, actor="pracownik")
+    compensated = saga.get("compensated", [])
+    if saga["ok"] and rollback:
+        # explicit end-of-transaction rollback: close the browser we opened
+        comp = undo_flow(reg, saga["results"], events=ev, actor="pracownik")
+        compensated = comp["undone"]
+    return {"goal": goal, "steps": [s["uri"] for s in steps], "ok": saga["ok"],
+            "compensated": compensated, "events": ev.log}
+
+
 if __name__ == "__main__":
     import sys, time  # noqa: E401
     goal = " ".join(sys.argv[1:]) or "otwórz sklep CyberMysz na pc1 i zrób zrzut zamówienia"
-    r = run_office_goal_on_twin(goal)
-    print("Cel:", r["goal"])
-    print("Sekwencja wykonana na żywym pc1:")
-    for s in r["steps"]:
-        print("  →", s)
-    print("Zrzut:", r["shot"])
+    mode = "saga" if "--saga" in sys.argv else "flow"
+    if mode == "saga":
+        r = run_office_saga_on_twin(goal.replace("--saga", "").strip() or
+                                    "otwórz sklep CyberMysz na pc1 i zrób zrzut zamówienia")
+        print("Cel (saga):", r["goal"])
+        print("Sekwencja:", " + ".join(r["steps"]))
+        print("Skompensowano (zamknięto na pc1):", r["compensated"])
+    else:
+        r = run_office_goal_on_twin(goal)
+        print("Cel:", r["goal"])
+        for s in r["steps"]:
+            print("  →", s)
+        print("Zrzut:", r["shot"])
