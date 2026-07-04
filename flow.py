@@ -45,23 +45,45 @@ def _dig(ctx: list[dict], path: str):
     return cur
 
 
-def plan_undo(registry: Registry, ran: dict) -> dict | None:
-    """Given a reversible command that ran (ran = the run_flow result of ONE step),
-    build the inverse step deterministically from the contract's `inverse` + result.
-    Returns {uri, payload} or None if not reversible."""
+def plan_undo(registry: Registry, ran: dict, *, node_scheme: str = "") -> dict | None:
+    """Build the inverse step for a reversible command that ran. Prefers the
+    concrete `inverse` the runtime returned (e.g. {"uri": "kvm://host/proc/command/kill",
+    "args": {"pid": 34727}}); falls back to the contract's static inverse + field wiring.
+    Returns {uri, payload, remoteUri?} or None if not reversible."""
     result = ran.get("result", {})
     uri = ran.get("uri")
+    # 1) runtime-provided concrete inverse (has real args like a pid)
+    rt = result.get("inverse") if isinstance(result, dict) else None
+    if isinstance(rt, dict) and (rt.get("uri") or rt.get("path")):
+        remote = rt.get("uri") or rt.get("path")
+        # map the node-local remote uri to a registry uri if the caller registered one
+        local = _match_local(registry, remote, node_scheme, uri)
+        return {"uri": local or remote, "payload": dict(rt.get("args", {})), "remoteUri": remote}
+    # 2) static inverse from the contract + field wiring
     cap = registry.get(uri)
     if not cap or not cap.reversible or not cap.inverse:
         return None
     inv = registry.get(cap.inverse)
     if not inv:
         return None
-    # wire the inverse input from this result: the contract's result carries the
-    # payload to undo (e.g. a 'snapshot'); match by the inverse's required fields
     payload = {}
     req = (inv.input or {}).get("required", list((inv.input or {}).get("properties") or {}))
     for field in req:
         if field in result:
             payload[field] = result[field]
     return {"uri": cap.inverse, "payload": payload}
+
+
+def _match_local(registry: Registry, remote: str, scheme: str, origin: str) -> str | None:
+    """Resolve a runtime-provided inverse target to a registered capability URI:
+    first by an exact remoteUri match (http-node), then by route suffix (a bare
+    route like 'file/command/restore' -> 'fs://host/file/command/restore')."""
+    for u, cap in registry._caps.items():
+        if cap.config.get("remoteUri") == remote:
+            return u
+    route = remote.split("://", 1)[-1]                 # strip any scheme
+    route = route.split("/", 1)[-1] if "/" in route else route  # drop authority if present
+    for u in registry._caps:
+        if u.split("://", 1)[-1].split("/", 1)[-1] == route or u.endswith("/" + route):
+            return u
+    return None
