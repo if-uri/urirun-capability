@@ -56,9 +56,39 @@ URIRUN_CAP_LIVE=1 python -m pytest tests/test_live_node.py   # steruj żywym nod
       zadanie dwiema drogami — **×1.7 szybciej/zadanie** (749→445 ms), przepustowość
       1.34→2.25 zad./s, plus walidacja outputu, której baseline nie ma. Wynik trafia
       do raportu (`report/out` odcinek #5) jako `metric://`.
-- [ ] **Negocjacja backendów**: node ogłasza czym spełni kontrakt (zamiast łańcuchów w Pythonie) → node w Rust/Go/JS spełnia ten sam kontrakt.
+- [x] **Node (serwer) w dowolnym języku + negocjacja backendów** — ten sam
+      kontrakt `sys://host/os/query/info` spełniają node'y w **JavaScript** i **Go**
+      (`nodes/node.js`, `nodes/node.go`); każdy ogłasza przez `/capabilities` co
+      potrafi i jakim backendem. Jeden klient Python steruje oboma jednakowo i
+      waliduje ich output tym samym kontraktem (`tests/test_polyglot.py`).
 - [ ] Planner jako przeszukiwanie typowanej przestrzeni z `examples` (LLM opcjonalny).
 - [ ] Upstream: emisja zdarzeń jako niezmiennik runtime'u urirun.
+
+## Warstwa URI-process w dowolnym języku (server dla client)
+
+Tak — „serwer" (node wykonujący URI process) da się napisać w dowolnym języku.
+To **protokół sieciowy**, nie biblioteka Pythona:
+
+```
+GET  /health        -> { ok, lang, capabilities }
+GET  /capabilities  -> ogłasza jakie kontrakty spełnia (+ backend)   ← negocjacja
+POST /dispatch {uri, payload} -> { ok, result } | { ok:false, error:{category} }
+```
+
+Ten sam kontrakt `sys://host/os/query/info` spełniają:
+
+| Język | Plik | Backend ogłaszany | `result.lang` |
+| --- | --- | --- | --- |
+| JavaScript | `nodes/node.js` | `node:v20…` | `javascript` |
+| Go (kompilowany) | `nodes/node.go` | `go:go1…` | `go` |
+
+Jeden klient (Python Capability core) steruje **oboma** identycznie, waliduje
+ich output tym samym typowanym kontraktem, a bramka kontraktu działa niezależnie
+od języka serwera. Dopisanie node'a w Rust/PHP/Ruby = te same 3 endpointy.
+
+```bash
+URIRUN_CAP_POLYGLOT=1 python -m pytest tests/test_polyglot.py -q   # klient Python ↔ node JS + Go
+```
 
 ## Reużywalność w dowolnym techstacku
 

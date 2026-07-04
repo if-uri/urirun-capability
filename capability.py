@@ -180,15 +180,21 @@ def _subst(template: str, payload: dict) -> str:
 
 @adapter("http-node")
 def _http_node_adapter(cap: Capability, payload: dict) -> dict:
-    """Dispatch to a live urirun node (POST /run {uri, payload}). Lets the shrunk
-    core drive the existing mesh unchanged — a migration path, not a rewrite."""
+    """Dispatch to a live node over HTTP. Two wire protocols, so the SAME client
+    drives both the existing Python mesh AND capability nodes written in ANY
+    language (Go, JS, PHP, ...):
+      protocol="urirun"     -> POST /run,      result under result.value
+      protocol="capability" -> POST /dispatch, result under result  (language-neutral)
+    """
     import urllib.request  # noqa: PLC0415
     node = cap.config.get("node")
     remote_uri = cap.config.get("remoteUri", cap.uri)
+    proto = cap.config.get("protocol", "urirun")
     if not node:
         raise CapabilityError("INTERNAL", "http-node adapter needs config.node")
+    path = "/dispatch" if proto == "capability" else "/run"
     body = json.dumps({"uri": remote_uri, "payload": payload}).encode()
-    req = urllib.request.Request(f"{node}/run", data=body,
+    req = urllib.request.Request(f"{node}{path}", data=body,
                                  headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=cap.config.get("timeout", 30)) as resp:
@@ -196,10 +202,13 @@ def _http_node_adapter(cap: Capability, payload: dict) -> dict:
     except Exception as e:  # noqa: BLE001
         raise CapabilityError("UNAVAILABLE", f"node unreachable: {e}")
     if not doc.get("ok", True):
-        raise CapabilityError("INTERNAL", str(doc.get("error", "node error"))[:200])
+        err = doc.get("error", "node error")
+        cat = err.get("category", "INTERNAL") if isinstance(err, dict) else "INTERNAL"
+        raise CapabilityError(cat, str(err)[:200])
     res = doc.get("result", doc)
-    val = res.get("value") if isinstance(res, dict) else None
-    return val if isinstance(val, dict) else res
+    if proto != "capability" and isinstance(res, dict) and "value" in res:
+        res = res["value"]
+    return res if isinstance(res, dict) else {"value": res}
 
 
 @adapter("subprocess")
