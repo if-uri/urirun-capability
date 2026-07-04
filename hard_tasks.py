@@ -113,6 +113,50 @@ def refund_eligible(plan, days_since_purchase, used_actions, reason=""):
     return {"eligible": True, "rule": f"within-{window}d-and-under-usage", "plan": plan}
 
 
+# ── 5) missing info scattered across sources + provenance (#10) ────────────────
+def field_completeness(sources, required):
+    """Which required fields are present across scattered sources, WHERE each came
+    from, and which are MISSING — the completeness check LLMs fake ('looks complete')."""
+    provenance, present = {}, set()
+    for s in sources:
+        for k, v in (s.get("data") or {}).items():
+            if v not in (None, "", []):
+                present.add(k)
+                provenance.setdefault(k, []).append(s.get("source", "?"))
+    missing = [k for k in required if k not in present]
+    return {"complete": not missing, "missing": missing,
+            "provenance": {k: provenance[k] for k in required if k in provenance},
+            "present": sorted(present & set(required))}
+
+
+# ── 6) conflicts in multi-step instructions (#14 — LLMs silently skip these) ────
+def instruction_conflicts(directives):
+    """Detect contradictions in a structured instruction set: the same field set to
+    two different values, or a require+forbid on the same thing. An LLM reading a long
+    list merges or skips these; a typed checker names each conflict with its steps."""
+    conflicts = []
+    sets: dict[str, list] = {}
+    requires, forbids = {}, {}
+    for i, d in enumerate(directives):
+        if "set" in d:
+            sets.setdefault(d["set"], []).append((i, d.get("to")))
+        if "require" in d:
+            requires[d["require"]] = i
+        if "forbid" in d:
+            forbids[d["forbid"]] = i
+    for key, vals in sets.items():
+        distinct = {v for _, v in vals}
+        if len(distinct) > 1:
+            conflicts.append({"type": "value-conflict", "field": key,
+                              "values": sorted(str(v) for v in distinct),
+                              "steps": [i for i, _ in vals]})
+    for thing in set(requires) & set(forbids):
+        conflicts.append({"type": "require-forbid", "field": thing,
+                          "steps": sorted([requires[thing], forbids[thing]])})
+    return {"consistent": not conflicts, "conflicts": conflicts,
+            "count": len(conflicts)}
+
+
 # ── 4) root-cause from ambiguous symptoms (a set of error:// codes) ────────────
 # symptoms co-occur; the ROOT explains the most of them and comes first causally.
 _CAUSES = [
@@ -201,4 +245,28 @@ def hard_registry() -> Registry:
         adapter="python",
         config={"keywords": "przyczyna awaria awarii diagnoza problem blad błąd rootcause znajdz",
                 "fn": lambda symptoms: root_cause(symptoms)}))
+    reg.add(Capability(
+        uri="audit://dane/query/completeness", effect="query",
+        input={"type": "object", "required": ["sources", "required"]},
+        output={"type": "object", "required": ["complete"]},
+        examples=({"input": {"sources": [{"source": "email", "data": {"nr": "FV-1", "kwota": "1665"}}],
+                             "required": ["nr", "kwota", "nip"]},
+                   "output": {"complete": False, "missing": ["nip"],
+                              "provenance": {"nr": ["email"], "kwota": ["email"]},
+                              "present": ["kwota", "nr"]}},),
+        adapter="python",
+        config={"keywords": "brakujace brakuje kompletnosc dane rozproszone zebrac uzupelnic czego brakuje",
+                "fn": lambda sources, required: field_completeness(sources, required)}))
+    reg.add(Capability(
+        uri="audit://instrukcje/query/conflicts", effect="query",
+        input={"type": "object", "required": ["directives"]},
+        output={"type": "object", "required": ["consistent"]},
+        examples=({"input": {"directives": [{"set": "odbiorca", "to": "szef"},
+                                            {"set": "odbiorca", "to": "ksiegowa"}]},
+                   "output": {"consistent": False, "count": 1,
+                              "conflicts": [{"type": "value-conflict", "field": "odbiorca",
+                                             "values": ["ksiegowa", "szef"], "steps": [0, 1]}]}},),
+        adapter="python",
+        config={"keywords": "instrukcje sprzeczne sprzecznosc konflikt polecenia kroki niespojne wykryj",
+                "fn": lambda directives: instruction_conflicts(directives)}))
     return reg

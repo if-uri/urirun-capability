@@ -56,6 +56,20 @@ def main() -> int:
                     {"symptoms": ["cert-invalid", "ssl-verify-failed", "connection-refused-https"]})["result"]
     print(f"diagnoza: {diag['root']} (pewność {diag['confidence']}) — {diag['fix']}")
 
+    # 5) missing info scattered across sources (#10)
+    comp = dispatch(reg, "audit://dane/query/completeness",
+                    {"sources": [{"source": "email", "data": {"nr": "FV-2026-07-1", "kwota": "1665"}},
+                                 {"source": "zamowienie", "data": {"nr": "FV-2026-07-1", "termin": "jutro"}}],
+                     "required": ["nr", "kwota", "termin", "nip"]})["result"]
+    print(f"kompletność danych: brakuje={comp['missing']} (reszta z {list(comp['provenance'])})")
+
+    # 6) conflicts in multi-step instructions (#14)
+    conf = dispatch(reg, "audit://instrukcje/query/conflicts",
+                    {"directives": [{"set": "odbiorca", "to": "szef@firma.pl"},
+                                    {"set": "odbiorca", "to": "ksiegowa@firma.pl"},
+                                    {"require": "zalacznik"}, {"forbid": "zalacznik"}]})["result"]
+    print(f"sprzeczne instrukcje: {conf['count']} konflikt(y) → {[c['type'] for c in conf['conflicts']]}")
+
     # a Polish goal routes to the right hard-task capability, no LLM
     routed = plan_flow_nl(reg, "uzgodnij faktury z przelewami")
     print(f"cel PL 'uzgodnij faktury z przelewami' → {routed[0]['uri'] if routed else '—'}")
@@ -66,9 +80,12 @@ def main() -> int:
          consistency_outlier=con["outliers"],
          refund_rule=ref["rule"],
          rootcause=diag["root"], rootcause_confidence=diag["confidence"],
+         missing_fields=comp["missing"],
+         instruction_conflicts=conf["count"],
          nl_routed_to=(routed[0]["uri"] if routed else None),
          deterministic=True, verified_by_examples=True, needs_llm=False,
-         tasks=["reconcile", "consistency", "refund-rules", "root-cause"])
+         tasks=["reconcile", "consistency", "refund-rules", "root-cause",
+                "completeness", "instruction-conflicts"])
     print("\n→ 4 zadania 'anty-LLM' zrobione deterministycznie i zweryfikowane:", "OK" if caught else "BŁĄD")
     return 0 if caught else 1
 

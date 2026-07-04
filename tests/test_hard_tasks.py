@@ -9,7 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from capability import dispatch, check_examples  # noqa: E402
 from hard_tasks import (hard_registry, money, reconcile, cross_consistency,  # noqa: E402
-                        invoice_consistency, refund_eligible, root_cause)
+                        invoice_consistency, refund_eligible, root_cause,
+                        field_completeness, instruction_conflicts)
 
 
 # ── money normalisation across systems (the reconciliation nightmare) ──────────
@@ -106,10 +107,49 @@ def test_root_cause_reports_what_it_cannot_explain():
     assert r["unexplained"] == ["disk-full"] and r["confidence"] == 0.5
 
 
+# ── 5) missing info scattered across sources (#10) ─────────────────────────────
+def test_completeness_finds_missing_fields_with_provenance():
+    r = field_completeness(
+        [{"source": "email", "data": {"nr": "FV-1", "kwota": "1665"}},
+         {"source": "zamowienie", "data": {"nr": "FV-1", "termin": "jutro"}}],
+        required=["nr", "kwota", "termin", "nip"])
+    assert not r["complete"] and r["missing"] == ["nip"]          # nip is nowhere
+    assert r["provenance"]["nr"] == ["email", "zamowienie"]        # nr seen in both
+    assert r["provenance"]["termin"] == ["zamowienie"]
+
+
+def test_completeness_treats_empty_values_as_missing():
+    r = field_completeness([{"source": "form", "data": {"nip": "", "nr": "X"}}],
+                           required=["nr", "nip"])
+    assert r["missing"] == ["nip"]                                 # empty string ≠ present
+
+
+# ── 6) conflicts in multi-step instructions (#14) ──────────────────────────────
+def test_instruction_conflicts_flags_contradictory_values():
+    r = instruction_conflicts([{"set": "odbiorca", "to": "szef@firma.pl"},
+                               {"set": "kwota", "to": "1665"},
+                               {"set": "odbiorca", "to": "ksiegowa@firma.pl"}])
+    assert not r["consistent"] and r["count"] == 1
+    c = r["conflicts"][0]
+    assert c["type"] == "value-conflict" and c["field"] == "odbiorca" and c["steps"] == [0, 2]
+
+
+def test_instruction_conflicts_flags_require_and_forbid():
+    r = instruction_conflicts([{"require": "zalacznik"}, {"set": "temat", "to": "Re"},
+                               {"forbid": "zalacznik"}])
+    assert not r["consistent"]
+    assert any(c["type"] == "require-forbid" and c["field"] == "zalacznik" for c in r["conflicts"])
+
+
+def test_consistent_instructions_pass():
+    r = instruction_conflicts([{"set": "odbiorca", "to": "szef"}, {"require": "faktura"}])
+    assert r["consistent"] and r["count"] == 0
+
+
 # ── every capability's golden example still conforms (regression guard) ────────
 def test_all_hard_capabilities_conform_and_dispatch():
     reg = hard_registry()
-    assert len(reg._caps) == 5
+    assert len(reg._caps) == 7
     for cap in reg._caps.values():
         res = check_examples(reg, cap)
         assert res["passed"] == res["total"], f"{cap.uri}: {res}"
