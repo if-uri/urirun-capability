@@ -14,29 +14,16 @@ from __future__ import annotations
 
 import json
 import time
-import urllib.request
 from pathlib import Path
 
 from contracts_adopt import adopt_contracts
 from kvstore import load_kvstore, _HANDLERS  # real handlers for the meaningful case
 from capability import _validate
+from metric_events import emit_metric
 from planner import from_examples, synth_from_schema, plan_and_run
 
 GH = Path("/home/tom/github/if-uri")
 PKGS = {"capture-click": "kvm", "filepair": "fs", "kvstore": "kv", "windowpair": "kvm"}
-EVENTBUS = "http://127.0.0.1:28800"
-
-
-def emit(payload: dict) -> None:
-    body = json.dumps({"uri": "metric://examples/planner/query/summary",
-                       "actor": "examples-bench", "payload": payload}).encode()
-    try:
-        urllib.request.urlopen(urllib.request.Request(
-            f"{EVENTBUS}/emit", data=body, headers={"Content-Type": "application/json"}), timeout=3).read()
-    except Exception:
-        pass
-
-
 def measure() -> dict:
     caps = []
     for name, scheme in PKGS.items():
@@ -129,7 +116,7 @@ def main() -> int:
     rc = "ZŁAPANA" if m["regression_caught_with_examples"] else "przeoczona"
     rm = "przeoczona" if m["regression_missed_without_examples"] else "—"
     print(f"  {'REGRESJA handlera (zły wynik)':<38} {rc:<16} {rm}")
-    emit(m)
+    emit_metric("metric://examples/planner/query/summary", "examples-bench", m)
     Path(__file__).with_name("examples-bench.json").write_text(json.dumps(m, indent=2, ensure_ascii=False))
     print(f"\n  → examples dają {a['auto_conformance_covered']} automatycznego konformansu i "
           f"deterministyczne, wolne-od-LLM planowanie; bez nich — 0 weryfikacji zachowania.")

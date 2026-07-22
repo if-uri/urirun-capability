@@ -17,12 +17,12 @@ import json
 import subprocess
 import sys
 import time
-import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capability import Events, dispatch
 from kvstore import load_kvstore
+from metric_events import emit_metric
 from openapi import to_openapi
 
 PKG = Path("/home/tom/github/if-uri/urirun-contract-kvstore")
@@ -30,9 +30,6 @@ CONTRACTS = PKG / "contracts.json"
 ALL_PKGS = [Path(f"/home/tom/github/if-uri/urirun-contract-{n}")
             for n in ("capture-click", "filepair", "kvstore", "windowpair")]
 CORE_LINES = (Path(__file__).resolve().parent / "capability.py").read_text().count("\n")
-EVENTBUS = "http://127.0.0.1:28800"
-
-
 def _loc(paths) -> int:
     total = 0
     for f in paths:
@@ -110,16 +107,6 @@ def doc_lines(p: Path) -> int:
     return p.read_text().count("\n")
 
 
-def emit(payload: dict) -> None:
-    body = json.dumps({"uri": "metric://contract/refactor/query/summary",
-                       "actor": "contract-metrics", "payload": payload}).encode()
-    try:
-        urllib.request.urlopen(urllib.request.Request(
-            f"{EVENTBUS}/emit", data=body, headers={"Content-Type": "application/json"}), timeout=3).read()
-    except Exception:
-        pass
-
-
 def main() -> int:
     m = measure()
     print(f"== Metryka refaktoru kontraktu: {m['target']} ({m['contracts']} kontrakty)\n")
@@ -141,7 +128,7 @@ def main() -> int:
     print(f"  {'-'*w}  {'-'*26}  {'-'*20}")
     for name, old, new in rows:
         print(f"  {name:<{w}}  {old:<26}  {new}")
-    emit(m)
+    emit_metric("metric://contract/refactor/query/summary", "contract-metrics", m)
     Path(__file__).with_name("contract-metrics.json").write_text(
         json.dumps(m, indent=2, ensure_ascii=False))
     print(f"\n  → likwidacja {m['old_boilerplate_loc']} linii boilerplate/connector "

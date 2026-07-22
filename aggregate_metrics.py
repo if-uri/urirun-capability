@@ -7,21 +7,18 @@ from __future__ import annotations
 
 import json
 import sys
-import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from contracts_adopt import adopt_contracts
 from openapi import to_openapi
 from capability import Events, dispatch, check_examples
+from metric_events import emit_metric
 
 GH = Path("/home/tom/github/if-uri")
 PKGS = ["capture-click", "filepair", "kvstore", "windowpair"]
 SCHEMES = {"capture-click": "kvm", "filepair": "fs", "kvstore": "kv", "windowpair": "kvm"}
 CORE_LINES = (Path(__file__).resolve().parent / "capability.py").read_text().count("\n")
-EVENTBUS = "http://127.0.0.1:28800"
-
-
 # vendored / generated dirs that are not the package's own source
 _EXCLUDE = ("__pycache__", "/.git/", "/venv/", "/.venv/", "/node_modules/",
             "/site-packages/", "/dist/", "/build/", "/_site/", "/cache/", "/.pytest_cache/")
@@ -49,16 +46,6 @@ def pkg_stats(name: str) -> dict:
             "contract_bytes": cj.stat().st_size,
             "openapi_bytes": len(json.dumps(to_openapi(reg))),
             "examples": total_examples}
-
-
-def emit(payload: dict) -> None:
-    body = json.dumps({"uri": "metric://contract/refactor/aggregate/query/summary",
-                       "actor": "aggregate-metrics", "payload": payload}).encode()
-    try:
-        urllib.request.urlopen(urllib.request.Request(
-            f"{EVENTBUS}/emit", data=body, headers={"Content-Type": "application/json"}), timeout=3).read()
-    except Exception:
-        pass
 
 
 def main() -> int:
@@ -92,7 +79,11 @@ def main() -> int:
         "duplicated_gate_loc": tot_gate, "contract_data_bytes": tot_bytes,
         "per_pkg": stats,
     }
-    emit(summary)
+    emit_metric(
+        "metric://contract/refactor/aggregate/query/summary",
+        "aggregate-metrics",
+        summary,
+    )
     Path(__file__).with_name("aggregate-metrics.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False))
     saved = tot_old_loc - CORE_LINES
