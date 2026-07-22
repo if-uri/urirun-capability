@@ -16,20 +16,18 @@ import json
 import time
 from pathlib import Path
 
+from contract_paths import contract_path
 from contracts_adopt import adopt_contracts
 from kvstore import load_kvstore, _HANDLERS  # real handlers for the meaningful case
 from capability import _validate
 from metric_events import emit_metric
 from planner import from_examples, synth_from_schema, plan_and_run
 
-GH = Path("/home/tom/github/if-uri")
 PKGS = {"capture-click": "kvm", "filepair": "fs", "kvstore": "kv", "windowpair": "kvm"}
 def measure() -> dict:
     caps = []
     for name, scheme in PKGS.items():
-        cj = GH / f"urirun-contract-{name}" / "contracts.json"
-        if not cj.exists():
-            continue
+        cj = contract_path(name)
         # kvstore uses real handlers -> its golden pairs are genuinely verifiable
         reg = load_kvstore(cj) if name == "kvstore" else adopt_contracts(cj, scheme)
         for cap in reg._caps.values():
@@ -61,7 +59,7 @@ def measure() -> dict:
     # THE genuine differentiator: do examples CATCH a regression? Break the real
     # kvstore handler and check whether the golden pair detects the drift.
     from capability import Registry, Capability, dispatch
-    kv_src = GH / "urirun-contract-kvstore" / "contracts.json"
+    kv_src = contract_path("kvstore")
     regression_caught = regression_missed = None
     if kv_src.exists():
         good = load_kvstore(kv_src)

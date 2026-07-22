@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "contracts": {
+    "window/command/close": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": true,
+      "inverseRoute": "window/command/restore",
+      "inp": {
+        "id": "?str"
+      },
+      "out": {
+        "action": "const:window-close",
+        "reversible": "const:true",
+        "snapshot": "obj",
+        "inverse": {
+          "path": "const:window/command/restore",
+          "args": {
+            "snapshot": "obj"
+          }
+        }
+      },
+      "errors": [
+        "cdp-unreachable"
+      ],
+      "examples": [
+        {
+          "payload": {
+            "id": "active"
+          },
+          "result": {
+            "ok": true,
+            "connector": "kvm",
+            "action": "window-close",
+            "did": "close(active)",
+            "reversible": true,
+            "snapshot": {
+              "url": "https://example.test/x",
+              "scrollX": 0,
+              "scrollY": 240,
+              "forms": [],
+              "id": "active"
+            },
+            "inverse": {
+              "path": "window/command/restore",
+              "args": {
+                "snapshot": {
+                  "url": "https://example.test/x",
+                  "scrollX": 0,
+                  "scrollY": 240,
+                  "forms": [],
+                  "id": "active"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "window/command/restore": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": true,
+      "inverseRoute": "window/command/close",
+      "inp": {
+        "snapshot": "obj"
+      },
+      "out": {
+        "action": "const:window-restore",
+        "reversible": "const:true",
+        "inverse": {
+          "path": "const:window/command/close",
+          "args": {
+            "id": "?str"
+          }
+        }
+      },
+      "errors": [
+        "cdp-unreachable",
+        "snapshot-url-missing"
+      ],
+      "examples": [
+        {
+          "payload": {
+            "snapshot": {
+              "url": "https://example.test/x",
+              "scrollY": 240,
+              "forms": [],
+              "id": "active"
+            }
+          },
+          "result": {
+            "ok": true,
+            "connector": "kvm",
+            "action": "window-restore",
+            "did": "restore(active)",
+            "reversible": true,
+            "inverse": {
+              "path": "window/command/close",
+              "args": {
+                "id": "active"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "wires": [
+    {
+      "producer": "window/command/close",
+      "consumer": "window/command/restore",
+      "mapping": {
+        "snapshot": "snapshot"
+      },
+      "note": "checkpoint okna z jednego node → restore na innym (pełne wejście)"
+    }
+  ]
+}

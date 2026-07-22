@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "contracts": {
+    "file/command/snapshot-delete": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": true,
+      "inverseRoute": "file/command/restore",
+      "inp": {
+        "path": "str"
+      },
+      "out": {
+        "action": "const:file-snapshot-delete",
+        "reversible": "const:true",
+        "snapshot": "obj",
+        "inverse": {
+          "path": "const:file/command/restore",
+          "args": {
+            "snapshot": "obj"
+          }
+        }
+      },
+      "errors": [
+        "file-missing"
+      ],
+      "examples": [
+        {
+          "payload": {
+            "path": "/tmp/a.txt"
+          },
+          "result": {
+            "ok": true,
+            "connector": "filepair",
+            "action": "file-snapshot-delete",
+            "did": "snapshot-delete(/tmp/a.txt)",
+            "reversible": true,
+            "snapshot": {
+              "path": "/tmp/a.txt",
+              "content_b64": "aGVsbG8gd29ybGQ=",
+              "sha256": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+            },
+            "inverse": {
+              "path": "file/command/restore",
+              "args": {
+                "snapshot": {
+                  "path": "/tmp/a.txt",
+                  "content_b64": "aGVsbG8gd29ybGQ=",
+                  "sha256": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "file/command/restore": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": true,
+      "inverseRoute": "file/command/snapshot-delete",
+      "inp": {
+        "snapshot": "obj"
+      },
+      "out": {
+        "action": "const:file-restore",
+        "reversible": "const:true",
+        "inverse": {
+          "path": "const:file/command/snapshot-delete",
+          "args": {
+            "path": "?str"
+          }
+        }
+      },
+      "errors": [
+        "snapshot-path-missing"
+      ],
+      "examples": [
+        {
+          "payload": {
+            "snapshot": {
+              "path": "/tmp/a.txt",
+              "content_b64": "aGVsbG8gd29ybGQ="
+            }
+          },
+          "result": {
+            "ok": true,
+            "connector": "filepair",
+            "action": "file-restore",
+            "did": "restore(/tmp/a.txt)",
+            "reversible": true,
+            "inverse": {
+              "path": "file/command/snapshot-delete",
+              "args": {
+                "path": "/tmp/a.txt"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "wires": [
+    {
+      "producer": "file/command/snapshot-delete",
+      "consumer": "file/command/restore",
+      "mapping": {
+        "snapshot": "snapshot"
+      },
+      "note": "snapshot pliku z jednego procesu → restore w drugim (pełne wejście, jak window close→restore)"
+    }
+  ]
+}

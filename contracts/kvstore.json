@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "contracts": {
+    "kv/command/set": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": false,
+      "inverseRoute": null,
+      "inp": {
+        "key": "str",
+        "value": "str"
+      },
+      "out": {
+        "action": "const:kv-set",
+        "key": "str",
+        "stored": "const:true"
+      },
+      "errors": [
+        "store-unavailable"
+      ],
+      "examples": [
+        {
+          "payload": {
+            "key": "greeting",
+            "value": "hello world"
+          },
+          "result": {
+            "ok": true,
+            "connector": "kvstore",
+            "action": "kv-set",
+            "key": "greeting",
+            "stored": true
+          }
+        }
+      ]
+    },
+    "kv/query/get": {
+      "version": "v1",
+      "effect": "query",
+      "reversible": false,
+      "inverseRoute": null,
+      "inp": {
+        "key": "str"
+      },
+      "out": {
+        "action": "const:kv-get",
+        "key": "str",
+        "value": "?str",
+        "found": "bool"
+      },
+      "errors": [
+        "store-unavailable"
+      ],
+      "examples": [
+        {
+          "payload": {
+            "key": "greeting"
+          },
+          "result": {
+            "ok": true,
+            "connector": "kvstore",
+            "action": "kv-get",
+            "key": "greeting",
+            "value": "hello world",
+            "found": true
+          }
+        }
+      ]
+    }
+  },
+  "wires": [
+    {
+      "producer": "kv/command/set",
+      "consumer": "kv/query/get",
+      "mapping": {
+        "key": "key"
+      },
+      "note": "klucz zapisany przez set zasila odczyt get (handoff skalarny, command → query)"
+    }
+  ]
+}

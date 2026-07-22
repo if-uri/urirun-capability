@@ -51,6 +51,10 @@ deskryptor, reszta generowana) w
 `http-node` dyspozycjonuje do działającego mesha bez zmian — to ścieżka
 migracji. Adaptery (`python`, `subprocess`, `http-node`) są wtyczkami.
 
+Deskryptory czterech zakończonych eksperymentów `urirun-contract-*` znajdują się
+w [`contracts/`](contracts/) i są częścią tego repozytorium. Testy oraz audyty
+nie zależą już od absolutnych ścieżek ani od obecności historycznych checkoutów.
+
 ```bash
 python -m pytest tests -q                       # rdzeń + konformans
 python adopt.py                                  # adoptuj realny rejestr v2, pokaż lock + zdarzenia

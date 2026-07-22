@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capability import Registry
+from contract_paths import contract_path
 from contracts_adopt import adopt_contracts
 
 KV: dict[str, str] = {}   # the actual store (what the 422-LOC package wraps)
@@ -27,13 +28,13 @@ _HANDLERS = {
 }
 
 
-def load_kvstore(contracts_json: Path, scheme: str = "kv") -> Registry:
+def load_kvstore(contracts_json: Path | None = None, scheme: str = "kv") -> Registry:
+    contracts_json = contracts_json or contract_path("kvstore")
     return adopt_contracts(contracts_json, scheme, handlers=_HANDLERS)
 
 
 if __name__ == "__main__":
-    src = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(
-        "/home/tom/github/if-uri/urirun-contract-kvstore/contracts.json")
+    src = Path(sys.argv[1]) if len(sys.argv) > 1 else contract_path("kvstore")
     reg = load_kvstore(src)
     from capability import Events, dispatch
     from openapi import to_openapi

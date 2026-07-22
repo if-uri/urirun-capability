@@ -50,8 +50,9 @@ def projections(reg: Registry, meta: dict | None = None) -> dict:
 
 
 if __name__ == "__main__":
+    from contract_paths import contract_path
     from kvstore import load_kvstore
-    reg = load_kvstore(Path("/home/tom/github/if-uri/urirun-contract-kvstore/contracts.json"))
+    reg = load_kvstore(contract_path("kvstore"))
     p = projections(reg, {"id": "kvstore", "name": "Key-Value Store", "category": "storage"})
     print("z JEDNEGO deskryptora wygenerowano:")
     print(f"  manifest: {len(p['manifest']['routes'])} routes, "

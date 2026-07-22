@@ -4,17 +4,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from capability import Events, dispatch  # noqa: E402
+from contract_paths import contract_path  # noqa: E402
 from kvstore import load_kvstore  # noqa: E402
 from openapi import to_openapi  # noqa: E402
 
-CONTRACTS = Path("/home/tom/github/if-uri/urirun-contract-kvstore/contracts.json")
-
-pytestmark = pytest.mark.skipif(not CONTRACTS.exists(),
-                                reason="urirun-contract-kvstore not present")
+CONTRACTS = contract_path("kvstore")
 
 
 def test_real_contract_json_becomes_working_capabilities():

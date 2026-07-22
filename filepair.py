@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from contract_paths import contract_path
 from contracts_adopt import adopt_contracts
 
 FILES: dict[str, str] = {}   # an in-memory 'filesystem'
@@ -34,7 +35,7 @@ HANDLERS = {
 
 
 def load_filepair(contracts_json: Path | None = None):
-    src = contracts_json or Path("/home/tom/github/if-uri/urirun-contract-filepair/contracts.json")
+    src = contracts_json or contract_path("filepair")
     reg = adopt_contracts(src, scheme="fs", handlers=HANDLERS)
     # relax the auto-derived output schema: real results carry extra fields
     return reg

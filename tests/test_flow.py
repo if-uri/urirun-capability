@@ -4,14 +4,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from capability import Registry, Capability, Events, dispatch  # noqa: E402
+from contract_paths import contract_path  # noqa: E402
 from flow import run_flow, plan_undo  # noqa: E402
 from filepair import load_filepair, FILES  # noqa: E402
 
-FP = Path("/home/tom/github/if-uri/urirun-contract-filepair/contracts.json")
+FP = contract_path("filepair")
 
 
 def _kv():
@@ -45,7 +44,6 @@ def test_multistep_flow_wires_output_into_next_input():
     assert "flow://plan/command/start" in uris and "flow://plan/command/done" in uris
 
 
-@pytest.mark.skipif(not FP.exists(), reason="urirun-contract-filepair not present")
 def test_reversible_command_auto_rolls_back_via_inverse():
     reg = load_filepair()
     FILES.clear()
@@ -68,7 +66,6 @@ def test_reversible_command_auto_rolls_back_via_inverse():
     assert FILES.get("/notes.txt") == "important content", "auto-rollback must restore the file"
 
 
-@pytest.mark.skipif(not FP.exists(), reason="urirun-contract-filepair not present")
 def test_non_reversible_has_no_auto_undo():
     reg = _kv()
     ran = run_flow(reg, [{"uri": "kv://host/kv/query/get", "payload": {"key": "x"}}])

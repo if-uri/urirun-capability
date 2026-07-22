@@ -14,35 +14,26 @@ Emits metric://contract/refactor/query/summary so the report can monitor it.
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capability import Events, dispatch
+from contract_paths import contract_path
 from kvstore import load_kvstore
 from metric_events import emit_metric
 from openapi import to_openapi
 
-PKG = Path("/home/tom/github/if-uri/urirun-contract-kvstore")
-CONTRACTS = PKG / "contracts.json"
-ALL_PKGS = [Path(f"/home/tom/github/if-uri/urirun-contract-{n}")
-            for n in ("capture-click", "filepair", "kvstore", "windowpair")]
+CONTRACTS = contract_path("kvstore")
+# Recorded before the four proof-of-concept repositories were retired. Keeping
+# the baseline explicit makes this historical comparison reproducible without
+# requiring obsolete sibling checkouts.
+LEGACY_KVSTORE_LOC = 422
+LEGACY_KVSTORE_FILES = 26
+LEGACY_GATE_LOC = 36
+LEGACY_PACKAGE_COUNT = 4
 CORE_LINES = (Path(__file__).resolve().parent / "capability.py").read_text().count("\n")
-def _loc(paths) -> int:
-    total = 0
-    for f in paths:
-        try:
-            total += f.read_text(errors="ignore").count("\n")
-        except Exception:
-            pass
-    return total
-
-
-def _pkg_py(pkg: Path):
-    return [f for f in pkg.rglob("*.py")
-            if "__pycache__" not in str(f) and "test" not in f.name]
 
 
 def measure() -> dict:
@@ -50,12 +41,9 @@ def measure() -> dict:
     n_contracts = len(doc["contracts"])
 
     # OLD: the package that serves these contracts
-    old_py = _pkg_py(PKG)
-    old_loc = _loc(old_py)
-    old_files = sum(1 for _ in PKG.rglob("*") if _.is_file() and "__pycache__" not in str(_)
-                    and "/.git/" not in str(_))
-    gate_loc_per_pkg = _loc(list((PKG / "toolkit").glob("*.py")))
-    duplicated_gate = gate_loc_per_pkg * len(ALL_PKGS)
+    old_loc = LEGACY_KVSTORE_LOC
+    old_files = LEGACY_KVSTORE_FILES
+    duplicated_gate = LEGACY_GATE_LOC * LEGACY_PACKAGE_COUNT
 
     # NEW: capabilities on the shared core
     reg = load_kvstore(CONTRACTS)

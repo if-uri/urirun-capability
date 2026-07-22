@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "contracts": {
+    "screen/query/capture": {
+      "version": "v1",
+      "effect": "query",
+      "reversible": false,
+      "inverseRoute": null,
+      "inp": {
+        "monitor": "?int",
+        "max_width": "?int",
+        "base64": "?bool"
+      },
+      "out": {
+        "oneOf": [
+          {
+            "kind": "const:screenshot",
+            "path": "str",
+            "bytes": "int",
+            "fullSize": ["int"],
+            "via": "str"
+          },
+          {
+            "kind": "const:screenshot",
+            "degraded": "const:true",
+            "degradedReason": "str",
+            "bytes": "int"
+          }
+        ]
+      },
+      "errors": [
+        "capture-backend-missing",
+        "portal-denied"
+      ],
+      "examples": [
+        {
+          "payload": {
+            "base64": false
+          },
+          "result": {
+            "ok": true,
+            "connector": "capture-click",
+            "kind": "screenshot",
+            "path": "/tmp/s.png",
+            "bytes": 204931,
+            "fullSize": [2560, 1440],
+            "via": "grim"
+          }
+        },
+        {
+          "payload": {},
+          "result": {
+            "ok": true,
+            "connector": "capture-click",
+            "kind": "screenshot",
+            "degraded": true,
+            "degradedReason": "xdg-portal returned a 3811-byte placeholder",
+            "bytes": 3811
+          }
+        }
+      ]
+    },
+    "abs/command/click": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": false,
+      "inverseRoute": null,
+      "inp": {
+        "x": "int",
+        "y": "int",
+        "sw": "?int",
+        "sh": "?int",
+        "button": "?str"
+      },
+      "out": {
+        "action": "const:click-abs",
+        "screen": ["int"],
+        "did": "str"
+      },
+      "errors": [
+        "uinput-unavailable"
+      ],
+      "examples": [
+        {
+          "payload": {
+            "x": 840,
+            "y": 612,
+            "sw": 2560,
+            "sh": 1440
+          },
+          "result": {
+            "ok": true,
+            "connector": "capture-click",
+            "action": "click-abs",
+            "screen": [2560, 1440],
+            "did": "click@(840,612)"
+          }
+        }
+      ]
+    }
+  },
+  "wires": [
+    {
+      "producer": "screen/query/capture",
+      "consumer": "abs/command/click",
+      "mapping": {
+        "sw": "fullSize.0",
+        "sh": "fullSize.1"
+      },
+      "note": "rozmiar ekranu ze zrzutu (fullSize, lista [int]) zasila przestrzeń kliknięcia — handoff CZĘŚCIOWY (x,y z osobnego kroku locate); fullSize jest w wariancie sukcesu, sw/sh są opcjonalne"
+    }
+  ]
+}

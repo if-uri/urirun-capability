@@ -12,23 +12,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capability import check_examples, check_reversibility, Registry
+from contract_paths import contract_path
 from contracts_adopt import adopt_contracts
 from kvstore import load_kvstore
 from hard_tasks import hard_registry
 from office_nl import office_registry
 
-GH = Path("/home/tom/github/if-uri")
 CONTRACT_PKGS = {"capture-click": "kvm", "filepair": "fs", "kvstore": "kv", "windowpair": "kvm"}
 
 
 def registries() -> dict[str, Registry]:
-    regs = {"kvstore(real handlers)": load_kvstore(GH / "urirun-contract-kvstore" / "contracts.json"),
+    regs = {"kvstore(real handlers)": load_kvstore(),
             "hard_tasks(real)": hard_registry(),
             "office(real)": office_registry()}
     for name, scheme in CONTRACT_PKGS.items():
-        cj = GH / f"urirun-contract-{name}" / "contracts.json"
-        if cj.exists():
-            regs[f"adopt:{name}(stub)"] = adopt_contracts(cj, scheme)
+        regs[f"adopt:{name}(stub)"] = adopt_contracts(contract_path(name), scheme)
     return regs
 
 
